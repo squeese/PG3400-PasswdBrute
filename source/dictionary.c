@@ -31,17 +31,26 @@ struct ibuffer {
   char* data;
   int index;
   int size;
+  FILE* fd;
 };
 
-void ibuffer_init(struct ibuffer *ib) {
+int ibuffer_init(struct ibuffer *ib, char* path) {
   ib->data = ib->stack;
   ib->index = 0;
   ib->size = INPUT_BUFFER_INITIAL_SIZE;
+  ib->fd = fopen(path, "r");
+  if (ib->fd == NULL) {
+    printf("Unable to open dictionary file at given path: %s\nError: (%d) %s\n", path, errno, strerror(errno));
+    return errno;
+  }
+  return 0;
 }
 
 void ibuffer_free(struct ibuffer *ib) {
-  if (ib->data == ib->stack) return;
-  free(ib->data);
+  fclose(ib->fd);
+  if (ib->data != ib->stack) {
+    free(ib->data);
+  }
 }
 
 void ibuffer_write(struct ibuffer *ib, char c) {
@@ -61,43 +70,10 @@ void ibuffer_reset(struct ibuffer *ib) {
   ib->index = 0;
 }
 
-/*
-typedef void (*scan_handler)(struct ibuffer*, void*, void*);
-
-static void dict_scan(FILE* fd, struct ibuffer* ib, scan_handler handler, void* a, void* b) {
+static int dict_scan_word(struct ibuffer* ib) {
   int cursor;
   ibuffer_reset(ib);
-  while ((cursor = getc(fd)) != EOF) {
-    if (cursor == '\n') {
-      handler(ib, a, b);
-      ibuffer_reset(ib);
-      continue;
-    }
-    ibuffer_write(ib, cursor);
-  }
-  if (ib->index > 0) handler(ib, a, b);
-}
-
-static void dict_scan_size(struct ibuffer* ib, void* size, void* count) {
-  // d->size += ib->index + 1;
-  // printf("dict_compute_size: (%d) (%d) %s\n", ib->index, d->size, ib->data);
-  *((int*) size) += ib->index + 1;
-  *((int*) count) += 1;
-}
-
-static void dict_scan_copy(struct ibuffer* ib, void* data, void* unused) {
-  ibuffer_write(ib, '\0');
-  char** entries = (char**) = data;
-  // char* data = *((char**) entries) + (*(int*) index);
-  // memcpy(data, ib->data, ib->index);
-  // *((int*) index) += 1;
-}
-*/
-
-static int dict_scan_word(FILE* fd, struct ibuffer* ib) {
-  int cursor;
-  ibuffer_reset(ib);
-  while ((cursor = getc(fd)) != EOF) {
+  while ((cursor = getc(ib->fd)) != EOF) {
     if (cursor == '\n') break;
     ibuffer_write(ib, cursor);
   }
@@ -105,51 +81,50 @@ static int dict_scan_word(FILE* fd, struct ibuffer* ib) {
 }
 
 int dict_load(struct dictionary* d, char* path) {
-  // struct dictionary* d = malloc(sizeof(struct dictionary));
-  FILE* fd = fopen(path, "r");
-  if (fd == NULL) {
-    printf("Unable to open dictionary file at given path: %s\nError: (%d) %s\n", path, errno, strerror(errno));
-    return errno;
-  }
-
-  // create file scan buffer
-
+  // initialize struct
   d->count = 0;
+  d->data = NULL;
+  d->entries = NULL;
+
+  // open dictionary file
+  struct ibuffer ib;
+  if (ibuffer_init(&ib, path) != 0) return errno;
+
+  // scan words in dictionary files to find out the needed space in memory
+  // and how many words there are.
   unsigned int size = 0;
-  struct ibuffer ib = { 0 };
-  ibuffer_init(&ib);
-  while (dict_scan_word(fd, &ib) > 0) {
+  while (dict_scan_word(&ib) > 0) {
     size += ib.index + 1;
     d->count++;
   }
   d->data = malloc(size * sizeof(char));
   d->entries = malloc(d->count * sizeof(char*));
   *(d->entries) = d->data;
-  rewind(fd);
 
-  printf("<count> %d\n", d->count);
-  
+  // scan words again, this time we copy the words into memory in the
+  // correct space assigned.
+  rewind(ib.fd);
   unsigned int index = 0;
-  while (dict_scan_word(fd, &ib) > 0) {
+  while (dict_scan_word(&ib) > 0) {
     ibuffer_write(&ib, '\0');
     char* pos = d->entries[index++];
     memcpy(pos, ib.data, ib.index);
     d->entries[index] = pos + ib.index;
   }
-  fclose(fd);
 
+  // close the dictionary file
+  ibuffer_free(&ib);
+
+  printf("<dictionary:count> %d\n", d->count);
+  printf("<dictionary:size> %d\n", size);
+  /*
   for (unsigned int i = 0; i < d->count; i++) {
     printf("[%p] (%d) %s\n", &(*d->entries[i]), i, d->entries[i]);
   }
   for (unsigned int i = 0; i < size; i++) {
     printf("[%p] (%d) %c\n", &d->data[i], i, d->data[i]);
   }
-
-
-
-  // dict_scan(fd, &ib, &dict_store_entry)
-
-  ibuffer_free(&ib);
+  */
 
   return EXIT_SUCCESS;
 }
