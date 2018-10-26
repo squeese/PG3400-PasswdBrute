@@ -22,16 +22,20 @@ struct queue {
 	char** data;
 	unsigned int offset;
 	struct crypt_data crypt;
+	char* hash;
 };
 
 void* dosleep(void* arg) {
 	struct queue* q = (struct queue*) arg;
-	printf("process chunk: %d %s\n", q->offset, *(q->data - q->offset));
+	// printf("START: %d %s\n", q->offset, *(q->data - q->offset));
 	char* enc;
 	for (int i = q->offset; i >= 0; i--) {
 		enc = crypt_r(*(q->data - i), salt, &q->crypt);
-		printf("(%d) %s %s\n", i, *(q->data - i), enc);
+		if (strncmp(enc, q->hash, 24) == 0) {
+			printf("SUCCESS (%d) %s %s\n", i, *(q->data - i), enc);
+		}
 	}
+	printf(" DONE: %d %s\n", q->offset, *(q->data - q->offset));
 	pthread_exit(0);
 }
 
@@ -88,7 +92,7 @@ int main(int argc, char **argv) {
 	printf("<salt> %s\n", salt);
 
 	// init queue
-	unsigned int queue_stride = 10;
+	unsigned int queue_stride = 1000;
 	unsigned int queue_size = 1 + ((d.count - 1) / queue_stride);
 	struct queue* q = malloc(queue_size * sizeof(struct queue));
 	for (unsigned int i = 0; i < queue_size; i++) {
@@ -100,11 +104,12 @@ int main(int argc, char **argv) {
 		q[i].offset = end - beg;
 		q[i].data = &d.entries[end];
 		q[i].crypt.initialized = 0;
+		q[i].hash = hash;
 	}
 
 	// print queue
 	for (unsigned int i = 0; i < queue_size; i++) {
-		printf("%d %s\n", q[i].offset, *q[i].data);
+		// printf("%d %s\n", q[i].offset, *q[i].data);
 		/*
 		for (int j = q[i].offset; j >= 0; j--) {
 			printf("(%d) %s\n", j, *(q[i].data - j));

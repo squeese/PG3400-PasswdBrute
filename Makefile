@@ -16,7 +16,7 @@ build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 devrun: build
-	./$(TARGET) password ./misc/small.txt 10
+	./$(TARGET) password ./misc/dictionary.txt 10
 
 clean:
 	rm -rf $(TARGET) build/*.o
