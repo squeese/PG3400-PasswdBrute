@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Werror -O0 -g
 TARGET = main
 
-FILES = crypto dictionary main 
+FILES = crypto queue dictionary main 
 
 $(TARGET): directories build
 
