@@ -9,75 +9,33 @@
 
 // static char* salt = "$1$7tBjugEa$";
 // static char* hash = "$1$7tBjugEa$h3cZLWYTXCwqikbFvQe7A/";
-void test(const int n, const int k, const int offset) {
-	// const int N = (int) pow((double) n, (double) k);
-	/*
-	if (offset == 0) {
-		printf("0 [ -1 -1 -1 ]\n");
-		return;
-	}
-	*/
-	int* Y = malloc(k * sizeof(int));
-	int r = offset;
-	printf("%d [ ", offset);
-	for (int x = k - 1; x >= 0; x--) {
-		Y[x] = 0;
-		int e = (int) pow((double) n, (double) x);
-		int g = (r-0) / e;
-		r -= g * e;
-		// r -= v0;
-		// r -= v0 * n;
-		// printf(" (%d,%d,%d) ", x, e, g);
-		printf(" %d ", g-1);
-	}
-	printf(" ]\n");
-	// printf("f(n^k)\n");
-	// printf("f(%d^%d) = %d\n", n, k, N);
-	free(Y);
-}
 
 int main(int argc, char **argv) {
 	// arguments and stuff
 	if (argc != 4) return -1;
 
-	struct wpermutation wp;
 	const int LENGTH = 3;
-	const int STRIDE = 1;
+	const int STRIDE = 16;
+
+	struct wpermutation wp;
 	wperm_init(&wp, LENGTH);
-	// char words[] = "123456789";
-	// char* words = "123456789";
-	char* words = calloc((LENGTH+1)*STRIDE, sizeof(char));
-	for (int i = 0; i < ((LENGTH+1)*STRIDE); i++) words[i] = '_';
-	int n;
-	int m = 0;
-	int y = 0;
+	char* words = calloc((LENGTH + 1) * STRIDE, sizeof(char));
+
+	int i = 0;
 	while (1) {
-		printf("%d [ %d %d %d ] ", y++, wp.y[0], wp.y[1], wp.y[2]);
-		n = wperm_generate(&wp, words, STRIDE);
-		if (n == 0) {
-			printf("\n");
+		wperm_update(&wp, i);
+		for (int x = 0; x < ((LENGTH + 1) * STRIDE); x++) words[x] = '_';
+		if (wperm_generate(&wp, words, STRIDE) == 0) {
 			break;
 		}
-		printf("%s (%d)\n", words, n);
-		m += n;
+		printf("%s [", words);
+		for (int j = 0; j < LENGTH; j++) printf(" %d ", wp.y[j]);
+		printf("]\n");
+		i += STRIDE;
 	}
+
 	wperm_free(&wp);
 	free(words);
-
-	for (int i = 0; i < 16; i++) test(3, LENGTH, i);
-
-	struct wpermutation2 wp2;
-	wperm_init2(&wp2, LENGTH);
-	char* words2 = calloc((LENGTH + 1) * STRIDE, sizeof(char));
-	for (int i = 0; i < 16; i++) {
-		wperm_update(&wp2, i);
-		wperm_generate2(&wp2, words2, STRIDE);
-		printf("%d [", i);
-		for (int j = 0; j < LENGTH; j++) {
-			printf(" %d ", wp2.y[j]);
-		}
-		printf("] %s \n", words2);
-	}
 
 
 
