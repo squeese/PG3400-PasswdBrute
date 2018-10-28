@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
 TARGET = main
 
-FILES = wbuffer wdictionary solvers tpool main 
+FILES = wbuffer wdictionary wpermutation solvers tpool main 
 
 $(TARGET): directories build
 
@@ -10,7 +10,7 @@ directories:
 	mkdir -p build
 
 build: $(patsubst %,build/%.o,$(FILES))
-	$(CC) $(CFLAGS) -o $(TARGET) $^ -lcrypt -pthread
+	$(CC) $(CFLAGS) -o $(TARGET) $^ -lcrypt -pthread -lm
 
 build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<

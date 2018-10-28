@@ -1,6 +1,5 @@
 #ifndef BC_WDICTIONARY_H
 #define BC_WDICTIONARY_H
-#include <pthread.h>
 
 struct wdictionary {
   unsigned int count;

@@ -10,6 +10,18 @@ struct dict_solver_state {
 	char* pass;
 };
 
-void* dict_solver_fn(void* arg);
+/*
+struct rand_solver_state {
+	unsigned int size;
+	pthread_mutex_t lock;
+}
+*/
+
+void* dict_solver_fn(void*);
+
+/*
+void* rand_solver_fn(void*);
+void rand_solver_free(struct rand_solver_state* rss);
+*/
 
 #endif
