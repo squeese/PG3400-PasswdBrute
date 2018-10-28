@@ -1,0 +1,50 @@
+#include "wbuffer.h"
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
+int wbuffer_init(struct wbuffer *wb, char* path) {
+  wb->word = wb->stack;
+  wb->index = 0;
+  wb->size = WBUFFER_INITIAL_SIZE;
+  wb->fd = fopen(path, "r");
+  if (wb->fd == NULL) {
+    printf("Unable to open dictionary file at given path: %s\nError: (%d) %s\n", path, errno, strerror(errno));
+    return errno;
+  }
+  return 0;
+}
+
+int wbuffer_read(struct wbuffer* wb) {
+  int cursor;
+  wbuffer_reset(wb);
+  while ((cursor = getc(wb->fd)) != EOF) {
+    if (cursor == '\n') break;
+    wbuffer_write(wb, cursor);
+  }
+  return wb->index;
+}
+
+void wbuffer_write(struct wbuffer* wb, char c) {
+  if (wb->index == wb->size) {
+    int size = wb->size * 2;
+    if (wb->word == wb->stack) {
+      wb->word = malloc(size * sizeof(char));
+      memcpy(wb->word, wb->stack, WBUFFER_INITIAL_SIZE);
+    } else {
+      wb->word = realloc(wb->word, size * sizeof(char));
+    }
+  }
+  *(wb->word + wb->index++) = c;
+}
+
+void wbuffer_reset(struct wbuffer* wb) {
+  wb->index = 0;
+}
+
+void wbuffer_free(struct wbuffer* wb) {
+  fclose(wb->fd);
+  if (wb->word != wb->stack) {
+    free(wb->word);
+  }
+}

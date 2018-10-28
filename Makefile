@@ -1,8 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -O0 -g
+CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
 TARGET = main
 
-FILES = crypto queue dictionary main 
+FILES = wbuffer wdictionary tpool main 
 
 $(TARGET): directories build
 
