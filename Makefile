@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
 TARGET = main
 
-FILES = wbuffer wdictionary tpool main 
+FILES = wbuffer wdictionary solvers tpool main 
 
 $(TARGET): directories build
 

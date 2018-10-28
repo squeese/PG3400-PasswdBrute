@@ -6,7 +6,6 @@ struct wdictionary {
   unsigned int count;
   unsigned int index;
   unsigned int stride;
-  pthread_mutex_t lock;
   char* words;
   char** word_indices;
 };

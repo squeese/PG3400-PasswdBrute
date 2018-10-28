@@ -11,9 +11,7 @@ typedef void*(*solver_fn)(void*);
 
 void tpool_init(struct tpool*, unsigned int);
 
-int tpool_start(struct tpool*, void*, void* (*fn)(void*, unsigned int*));
-
-void tpool_run_solver(struct tpool*, solver_fn, void*);
+char* tpool_run_solver(struct tpool*, solver_fn, void*);
 
 void tpool_free(struct tpool*);
 

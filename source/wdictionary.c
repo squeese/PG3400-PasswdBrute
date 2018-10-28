@@ -13,12 +13,6 @@ int wdict_init(struct wdictionary* wd, unsigned int stride, char* path) {
   wd->words = NULL;
   wd->word_indices = NULL;
 
-  // initialize mutex lock
-  if (pthread_mutex_init(&wd->lock, NULL) != 0) {
-    printf("Unable to initate mutex lock.\nError: (%d) %s\n", errno, strerror(errno));
-    return errno;
-  }
-
   // open dictionary file
   struct wbuffer wb;
   if (wbuffer_init(&wb, path) != 0) return errno;
@@ -52,9 +46,7 @@ int wdict_init(struct wdictionary* wd, unsigned int stride, char* path) {
 }
 
 int wdict_slice(struct wdictionary* wd, struct wdictionary_slice* wds) {
-  pthread_mutex_lock(&wd->lock);
   if (wd->index >= wd->count) {
-    pthread_mutex_unlock(&wd->lock);
     return EXIT_FAILURE;
   }
   unsigned int word_start = wd->index;
@@ -65,13 +57,11 @@ int wdict_slice(struct wdictionary* wd, struct wdictionary_slice* wds) {
   }
   wds->offset = word_end - word_start;
   wd->index += wds->offset;
-  pthread_mutex_unlock(&wd->lock);
   wds->word_indice = &wd->word_indices[word_end];
   return EXIT_SUCCESS;
 }
 
 void wdict_free(struct wdictionary* wd) {
-  pthread_mutex_destroy(&wd->lock);
   free(wd->words);
   free(wd->word_indices);
 }
