@@ -10,18 +10,16 @@ struct dict_solver_state {
 	char* pass;
 };
 
-/*
-struct rand_solver_state {
-	unsigned int size;
+struct perm_solver_state {
+	unsigned int word_size;
+	unsigned int word_offset;
 	pthread_mutex_t lock;
-}
-*/
+	char* salt;
+	char* hash;
+	char* pass;
+};
 
 void* dict_solver_fn(void*);
-
-/*
-void* rand_solver_fn(void*);
-void rand_solver_free(struct rand_solver_state* rss);
-*/
+void* perm_solver_fn(void*);
 
 #endif

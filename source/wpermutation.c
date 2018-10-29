@@ -4,7 +4,9 @@
 #include <math.h>
 #include <string.h>
 
-static const char inputs[] = "abcfghik"; //jlmnopqrstuvwxyz"; //ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";//+@£[]}";
+// jstatic const char inputs[] = "abcfghikjlmnopqrstuwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"; // +@£[]}";
+static const char inputs[] = "rstuwxyz1234567890"; // +@£[]}";
+// static const char inputs[] = "0123456789";
 
 void wperm_init(struct wpermutation* wp, int word_size) {
   wp->word_size = word_size;
