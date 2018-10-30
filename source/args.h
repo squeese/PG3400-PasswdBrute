@@ -5,8 +5,8 @@ struct args_server_config {
   char* host;
   unsigned int port;
   unsigned int threads;
-  char salt[12];
-  char hash[34];
+  // char salt[13];
+  // char hash[23];
 };
 
 int args_server_init(struct args_server_config*, int, char**);

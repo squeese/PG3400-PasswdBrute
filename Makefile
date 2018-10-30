@@ -22,4 +22,4 @@ clean:
 	rm -rf client server build/*.o
 
 runserver: server
-	./server -h 192.168.1.1 -p 2000 -t 10 $$1$$ckvWM6T@$$H6H/R5d4a/QjpB02Ri/V01
+	./server \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
