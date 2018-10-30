@@ -11,31 +11,32 @@
 #include <string.h>
 
 void* state_idle(int socket_id) {
-  int code = tw_read(socket_id);
-  printf("code: %d\n", code);
+  tw_read(socket_id);
+  printf("server : idle\n");
   return NULL;
 }
 
 void* state_connecting(int socket_id) {
   tw_send(socket_id, TW_CODE_OPEN);
+  printf("server > %d\n", TW_CODE_OPEN);
   return &state_idle;
 }
 
-void* config_initial(void* config, char* arg);
+void* cfg_initial(void* config, char* arg);
 
-void* config_host(void* config, char* arg) {
+void* cfg_host(void* config, char* arg) {
   ((struct sockaddr_in*) config)->sin_addr.s_addr = inet_addr(arg);
-  return &config_initial;
+  return &cfg_initial;
 }
 
-void* config_port(void* config, char* arg) {
+void* cfg_port(void* config, char* arg) {
   ((struct sockaddr_in*) config)->sin_port = atoi(arg);
-  return &config_initial;
+  return &cfg_initial;
 }
 
-void* config_initial(void* config, char* arg) {
-  if (config_match(arg, 2, "-h", "--host")) return &config_host;
-  if (config_match(arg, 2, "-p", "--port")) return &config_port;
+void* cfg_initial(void* config, char* arg) {
+  if (cfg_match(arg, 2, "-h", "--host")) return &cfg_host;
+  if (cfg_match(arg, 2, "-p", "--port")) return &cfg_port;
   return NULL;
 }
 
@@ -50,7 +51,7 @@ int main(int argc, char** args) {
   address.sin_family = AF_INET;
   address.sin_port = 0;
   address.sin_addr.s_addr = INADDR_ANY;
-  config_parse(&address, argc, args, &config_initial);
+  cfg_parse(&address, argc, args, &cfg_initial);
 
   if (bind(sock_server, (struct sockaddr*) &address, sizeof(address)) != 0) {
     printf("Error (%d): %s\n", errno, strerror(errno));
@@ -61,9 +62,6 @@ int main(int argc, char** args) {
   unsigned int address_size = sizeof(address);
   getsockname(sock_server, (struct sockaddr*) &address, &address_size);
   printf("{host:%d, port:%d}\n", address.sin_addr.s_addr, address.sin_port);
-  FILE *f = fopen(".port", "w+");
-  fprintf(f, "%d", address.sin_port);
-  fclose(f);
 
   if (listen(sock_server, 5) != 0) {
     printf("Error (%d): %s\n", errno, strerror(errno));
@@ -82,8 +80,8 @@ int main(int argc, char** args) {
   while (fn != NULL) {
     fn = (tw_state_fn)(*fn)(sock_client);
   }
-  printf("Closing down server.\n");
 
+  printf("Closing down server.\n");
   close(sock_server);
   return 0;
 }
