@@ -1,56 +1,86 @@
-#include "tpool.h"
-#include "wdictionary.h"
-#include "wpermutation.h"
-#include "solvers.h"
-#include <stdlib.h>
+#include "config.h"
+// #include "talkiewalkie.h"
 #include <stdio.h>
-#include <math.h>
+#include <stdlib.h>
 #include <string.h>
+// #include <sys/types.h>
+// #include <sys/socket.h>
+// #include <sys/wait.h>
+// #include <netinet/in.h>
+// #include <unistd.h>
+// #include <assert.h>
 
-static char salt[13];
-// static char* hash = "$1$7tBjugEa$h3cZLWYTXCwqikbFvQe7A/"; // Great
-static char* hash = "$1$9779ofJE$AGS41EkDh6j.usuCUld3a0"; // 3636
 
-int main(int argc, char **argv) {
-	// arguments and stuff
-	if (argc != 4) return -1;
+int main(int argc, char** args) {
+  struct cfg_client cfg = { NULL, 0, NULL, "misc/small.txt", 4, 32, 4 };
+  cfg_parse(&cfg, argc, args, &cfg_client_root);
 
-  char *dict_path = argv[2];
-	char *password;
-	memcpy(salt, hash, 12);
-	salt[12] = 0;
+  printf("\nConfig\n");
+  printf(" host       : %s\n", cfg.host);
+  printf(" port       : %d\n", cfg.port);
+  printf(" dictionary : %s\n", cfg.dictionary);
+  printf(" threads    : %d\n", cfg.threads);
+  printf(" stride     : %d\n", cfg.stride);
+  printf(" depth      : %d\n", cfg.depth);
+  printf(" hash       : %s\n", cfg.hash);
+  printf("\n");
 
-	// create thread pool
-	struct tpool tp;
-	tpool_init(&tp, 8);
+  // create a connection to server
+  if (cfg.host != NULL) {
+    // create local server
+  }
 
-	// load the password dictionary
-	int error;
-	struct wdictionary wd;
-	if ((error = wdict_init(&wd, 32, dict_path)) != EXIT_SUCCESS) {
-		wdict_free(&wd);
-		tpool_free(&tp);
-		return error;
-	}
-
-	// try to solve the hash with a dictionary
-	struct dict_solver_state dss = { &wd, PTHREAD_MUTEX_INITIALIZER, salt, hash, NULL };
-	if ((password = tpool_run_solver(&tp, dict_solver_fn, &dss)) != NULL) {
-		printf("Dictionary -> Found password: %s\n", password);
-	} 
-  pthread_mutex_destroy(&dss.lock);
-
-	// try to solve the hash with a string permutation
-	const int LENGTH = 4;
-	const int STRIDE = 128;
-	struct perm_solver_state pss = { LENGTH, 0, PTHREAD_MUTEX_INITIALIZER, salt, hash, NULL };
-	if ((password = tpool_run_solver(&tp, perm_solver_fn, &pss)) != NULL) {
-		printf("Permutation -> Found password: %s\n", password);
-	} 
-  pthread_mutex_destroy(&pss.lock);
-
-	// cleanup
-	wdict_free(&wd);
-
-	return EXIT_SUCCESS;
+  return 0;
 }
+
+/*
+  int nsocket;
+  nsocket = socket(AF_INET, SOCK_STREAM, 0);
+
+  struct sockaddr_in address;
+  address.sin_family = AF_INET;
+  address.sin_port = portnr();
+  address.sin_addr.s_addr = INADDR_ANY;
+
+  int status = connect(nsocket, (struct sockaddr*) &address, sizeof(address));
+  if (status != 0) {
+    printf("Unable to connect to server\n");
+    return 0;
+  }
+
+  tw_state_fn fn = &state_connecting;
+  while (fn != NULL) {
+    fn = (tw_state_fn)(*fn)(nsocket);
+  }
+
+  printf("Closing connection.\n");
+  close(nsocket);
+  int pipefd[2];
+  char buf;
+  pipe(pipefd);
+  pid_t pid_server = fork();
+  if (pid_server == 0) {
+    // static char *argv[] = { "9003" };
+    // execv("./server", argv);
+    close(pipefd[1]);
+    char msg[10];
+    int i = 0;
+    while (read(pipefd[0], &buf, 1) > 0) {
+      // write(1, &buf, 1);
+      msg[i++] = buf;
+    }
+    msg[i++] = '\n';
+    write(1, &msg, i);
+    // write(1, "x", 1);
+    close(pipefd[0]);
+    exit(EXIT_SUCCESS);
+  } else {
+    // waitpid(pid, 0, 0);
+    close(pipefd[0]);
+    char msg[] = "hello";
+    write(pipefd[1], msg, strlen(msg));
+    close(pipefd[1]);
+    wait(NULL);
+    exit(EXIT_SUCCESS);
+  }
+  */

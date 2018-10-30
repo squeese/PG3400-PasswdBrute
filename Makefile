@@ -1,16 +1,17 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-TARGET = main
+SHARED = config wbuffer wdictionary wpermutation solvers tpool talkiewalkie
 
-FILES = wbuffer wdictionary wpermutation solvers tpool client main 
+all: client server
 
-$(TARGET): directories build
+client: directories $(patsubst %,build/%.o,$(SHARED)) build/main.o
+	$(CC) $(CFLAGS) -o client $^ build/main.o -lcrypt -pthread -lm
+
+server: directories $(patsubst %,build/%.o,$(SHARED)) build/server.o
+	$(CC) $(CFLAGS) -o client $^ build/main.o -lcrypt -pthread -lm
 
 directories:
 	mkdir -p build
-
-build: $(patsubst %,build/%.o,$(FILES))
-	$(CC) $(CFLAGS) -o $(TARGET) $^ -lcrypt -pthread -lm
 
 build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -21,10 +22,10 @@ clean:
 dev: build
 	./$(TARGET) password ./misc/dictionary.txt 10
 
-dev_client: build/client.o
-	$(CC) $(CFLAGS) -o client build/client.o
-	./client
+dev_client: build/talkiewalkie.o build/config.o build/client.o
+	$(CC) $(CFLAGS) -o client build/talkiewalkie.o build/config.o build/client.o
+	./client -t 12 -s 128 \$$1\$$9779ofJE\$$AGS41EkDh6j.usuCUld3a0
 
-dev_server: build/server.o
-	$(CC) $(CFLAGS) -o server build/server.o
-	./server
+dev_server: build/talkiewalkie.o build/config.o build/server.o
+	$(CC) $(CFLAGS) -o server build/talkiewalkie.o build/config.o build/server.o
+	./server -p 8000
