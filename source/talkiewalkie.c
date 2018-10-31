@@ -8,16 +8,26 @@
 #include <errno.h>
 #include <string.h>
 
-int tw_read_code(int socket_id, void* prefix) {
-  static char buffer[8];
-  int i = recv(socket_id, &buffer[0], 8, 0);
-  printf("%s tw_read_code(%d): %s -> %d\n", (char*) prefix, i, buffer, atoi(&buffer[1]));
-  return atoi(&buffer[1]);
+extern char TW_LOG_PREFIX[];
+
+static const char* TW_CODES[] = {
+  "IDLE",
+  "EXIT",
+  "PING",
+  "PONG",
+};
+
+int tw_read_code(int socket_id) {
+  static char buffer[5];
+  recv(socket_id, &buffer, 4, MSG_WAITALL);
+  int code = atoi(&buffer[1]);
+  printf("%s READ %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
+  return code;
 }
 
-void tw_send_code(int socket_id, int code, void* prefix) {
-  static char buffer[8];
-  sprintf(&buffer[0], "[%d]", code);
-  printf("%s write(%ld): %s <- %d\n", (char*) prefix, 8, buffer, code);
-  send(socket_id, &buffer[0], 8, 0);
+void tw_send_code(int socket_id, int code) {
+  static char buffer[5];
+  snprintf(buffer, 5, "[%02d]", code);
+  printf("%s SEND %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
+  send(socket_id, &buffer, 4, 0);
 }

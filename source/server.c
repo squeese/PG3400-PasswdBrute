@@ -7,22 +7,22 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <wait.h>
 // #include <sys/types.h>
 // #include <netinet/in.h>
 
-static char TW_LOG_PREFIX[] = "<Server>";
+char TW_LOG_PREFIX[] = "<Server>";
 static void* server_state_idle(int);
 
+
 int main(int argc, char** args) {
+  const int is_child_process = argc == 0;
+
   // Create config with input arguments
   struct args_server_config server_config;
   if (args_server_init(&server_config, argc, args) != 0) {
     return EXIT_FAILURE;
   }
-  printf("\n");
-  printf("<Server> -t %s (host)\n", server_config.host == NULL ? "localhost" : server_config.host);
-  printf("<Server> -p %d (port)\n", server_config.port);
-  printf("<Server> -t %d (threads)\n", server_config.threads);
 
   // Attempt to create a server socket
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -49,10 +49,14 @@ int main(int argc, char** args) {
     close(server_socket);
     return EXIT_FAILURE;
   }
+  if (is_child_process) {
+    fprintf(stdout, "%07d", server_address.sin_port);
+    sleep(1);
+  }
   printf("<Server> socket bound to %s:%d\n", inet_ntoa(server_address.sin_addr), server_address.sin_port);
 
   // Attempt to make socket listen for clients connecting
-  if (listen(server_socket, 1) != 0) {
+  if (listen(server_socket, 5) != 0) {
     fprintf(stderr, "Error listening on socket. errno(%d): %s\n", errno, strerror(errno));
     close(server_socket);
     return EXIT_FAILURE;
@@ -73,11 +77,14 @@ int main(int argc, char** args) {
       return EXIT_FAILURE;
     }
     printf("<Server> client (%s) connected\n", inet_ntoa(client_address.sin_addr));
+
     // start talkiewalkie state loop
     tw_state_fn fn = &server_state_idle;
+    tw_send_code(client_socket, TW_CODE_IDLE);
     while (fn != NULL) {
       fn = (tw_state_fn)(*fn)(client_socket);
     }
+
     // close client connection
     printf("<Server> client (%s) disconnected\n", inet_ntoa(client_address.sin_addr));
     close(client_socket);
@@ -85,24 +92,20 @@ int main(int argc, char** args) {
 
   printf("<Server> exiting.\n");
   close(server_socket);
+  /*
+  */
   return EXIT_SUCCESS;
 }
 
-
 static void* server_state_idle(int client_socket) {
-  tw_send_code(client_socket, TW_CODE_IDLE, &TW_LOG_PREFIX);
-  unsigned int code;
-  while (1) {
-    code = tw_read_code(client_socket, &TW_LOG_PREFIX);
-    switch (code) {
-      case TW_CODE_PING:
-        tw_send_code(client_socket, TW_CODE_PONG, &TW_LOG_PREFIX);
-        break;
-      case TW_CODE_EXIT:
-        return NULL;
-      default:
-        printf("<Server> unknown code recieved: %d\n", code);
-    }
+  int code = tw_read_code(client_socket);
+  switch (code) {
+    case TW_CODE_PING:
+      tw_send_code(client_socket, TW_CODE_PONG);
+      tw_send_code(client_socket, TW_CODE_IDLE);
+      break;
+    default:
+      printf("<Server> IDLE: unhandled code %d\n", code);
   }
-  return NULL;
+  return &server_state_idle;
 }

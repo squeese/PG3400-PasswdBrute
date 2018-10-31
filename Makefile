@@ -1,12 +1,12 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-SHARED = args config wbuffer wdictionary wpermutation solvers tpool talkiewalkie
+SHARED = args wbuffer wdictionary wpermutation solvers talkiewalkie tpool
 
 all: client server
-client: directories binary_client
+client: directories binary_server binary_client
 server: directories binary_server
 
-binary_client: $(patsubst %,build/%.o,$(SHARED)) build/main.o
+binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
 	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lm
 
 binary_server: $(patsubst %,build/%.o,$(SHARED)) build/server.o
@@ -19,7 +19,10 @@ directories:
 	mkdir -p build
 
 clean:
-	rm -rf client server build/*.o
+	rm -rf client server test build/*.o
+
+runclient: client
+	./client \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
 
 runserver: server
-	./server \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
+	./server

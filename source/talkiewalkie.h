@@ -10,7 +10,7 @@ enum {
 
 typedef void*(*tw_state_fn)(int);
 
-int tw_read_code(int, void*);
-void tw_send_code(int, int, void*);
+int tw_read_code(int);
+void tw_send_code(int, int);
 
 #endif

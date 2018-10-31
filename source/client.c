@@ -1,139 +1,157 @@
-#include "config.h"
-// #include "talkiewalkie.h"
+#include "args.h"
+#include "talkiewalkie.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 #include <string.h>
-// #include <sys/types.h>
-// #include <sys/socket.h>
-// #include <sys/wait.h>
-// #include <netinet/in.h>
-// #include <unistd.h>
-// #include <assert.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <wait.h>
 
-struct client_config {
-  char* host;
-  int port;
-  char* hash;
-  char* dictionary;
-  int threads;
-  int stride;
-  int depth;
-};
-
-void* client_config_initial(void* cfg, char* arg);
-
-void* client_config_dictionary(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->dictionary = arg;
-  return &client_config_initial;
-}
-
-void* client_config_threads(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->threads = atoi(arg);
-  return &client_config_initial;
-}
-
-void* client_config_stride(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->stride = atoi(arg);
-  return &client_config_initial;
-}
-
-void* client_config_depth(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->depth = atoi(arg);
-  return &client_config_initial;
-}
-
-void* client_config_host(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->host = arg;
-  return &client_config_initial;
-}
-
-void* client_config_port(void* cfg, char* arg) {
-  ((struct client_config*) cfg)->port = atoi(arg);
-  return &client_config_initial;
-}
-
-void* client_config_initial(void* cfg, char* arg) {
-  if (config_match(arg, 2, "-d", "--dictionary")) return &client_config_dictionary;
-  if (config_match(arg, 2, "-t", "--threads")) return &client_config_threads;
-  if (config_match(arg, 2, "-s", "--stride")) return &client_config_stride;
-  if (config_match(arg, 2, "-d", "--depth")) return &client_config_depth;
-  if (config_match(arg, 2, "-h", "--host")) return &client_config_host;
-  if (config_match(arg, 2, "-p", "--port")) return &client_config_port;
-  if (strlen(arg) == 34) ((struct client_config*) cfg)->hash = arg;
-  else printf("Unknown config parameter: %s\n", arg);
-  return NULL;
-}
+char TW_LOG_PREFIX[] = "<Client>";
+static void* client_state_idle(int);
+static void* client_state_ping(int);
 
 int main(int argc, char** args) {
-  struct client_config cfg = { NULL, 0, NULL, "misc/small.txt", 4, 32, 4 };
-  config_parse(&cfg, argc, args, &client_config_initial);
-
-  printf("\nConfig\n");
-  printf(" host       : %s\n", cfg.host);
-  printf(" port       : %d\n", cfg.port);
-  printf(" dictionary : %s\n", cfg.dictionary);
-  printf(" threads    : %d\n", cfg.threads);
-  printf(" stride     : %d\n", cfg.stride);
-  printf(" depth      : %d\n", cfg.depth);
-  printf(" hash       : %s\n", cfg.hash);
+  // Create config with input arguments
+  struct args_client_config client_config;
+  if (args_client_init(&client_config, argc, args) != 0) {
+    return EXIT_FAILURE;
+  }
   printf("\n");
+  printf("<Client> -d %s (dictionary)\n", client_config.dictionary);
+  printf("<Client> -l %d (length)\n", client_config.length);
+  printf("<Client>    %s (salt)\n", client_config.salt);
+  printf("<Client>    %s (hash)\n", client_config.hash);
+  args_client_free(&client_config);
 
-  // create a connection to server
-  if (cfg.host != NULL) {
-    // create local server
+  // Check if we need to start a local server if there isnt one
+  // specified in the configs
+  if (client_config.servers == NULL) {
+    int process_pipe[2];
+    pipe(process_pipe);
+    pid_t process_id = fork();
+    if (process_id == 0) {
+      // This is the child server process.
+      // Rewire the stdout to our custom pipe, so we can communicate.
+      // We need to get the PORT nr that the OS will assign to the server.
+      close(1); 
+      dup(process_pipe[1]);
+      close(process_pipe[0]);
+      close(process_pipe[1]);
+      static char* args[] = {};
+      execv("./server", args);
+      fprintf(stderr, "Error forking child server process. errno(%d): %s\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    } else {
+      // Read from the pipe (child server process' stdout), to get the PORT nr
+      char buffer[16];
+      printf("ok go\n");
+      int bytes = read(process_pipe[0], buffer, 7);
+      fprintf(stderr, "ok go\n");
+      fprintf(stdout, "ok go\n");
+      buffer[bytes] = 0;
+      // Cleanup/close the pipes, since we dont need them anymore
+      close(process_pipe[0]);
+      close(process_pipe[1]);
+      // Create a new server entry in the config for the local child server process.
+      struct sockaddr_in* server_address = malloc(sizeof(struct sockaddr_in));
+      server_address->sin_family = AF_INET;
+      server_address->sin_port = atoi(buffer);
+      server_address->sin_addr.s_addr = INADDR_ANY;
+      client_config.num_servers = 1;
+      client_config.servers = server_address;
+    }
   }
 
-  return 0;
-}
+  printf("%s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
+
 
 /*
-  int nsocket;
-  nsocket = socket(AF_INET, SOCK_STREAM, 0);
-
-  struct sockaddr_in address;
-  address.sin_family = AF_INET;
-  address.sin_port = portnr();
-  address.sin_addr.s_addr = INADDR_ANY;
-
-  int status = connect(nsocket, (struct sockaddr*) &address, sizeof(address));
-  if (status != 0) {
-    printf("Unable to connect to server\n");
-    return 0;
-  }
-
-  tw_state_fn fn = &state_connecting;
-  while (fn != NULL) {
-    fn = (tw_state_fn)(*fn)(nsocket);
-  }
-
-  printf("Closing connection.\n");
-  close(nsocket);
-  int pipefd[2];
-  char buf;
-  pipe(pipefd);
-  pid_t pid_server = fork();
-  if (pid_server == 0) {
-    // static char *argv[] = { "9003" };
-    // execv("./server", argv);
-    close(pipefd[1]);
-    char msg[10];
-    int i = 0;
-    while (read(pipefd[0], &buf, 1) > 0) {
-      // write(1, &buf, 1);
-      msg[i++] = buf;
-    }
-    msg[i++] = '\n';
-    write(1, &msg, i);
-    // write(1, "x", 1);
-    close(pipefd[0]);
-    exit(EXIT_SUCCESS);
+  int fd[2];
+  pipe(fd);
+  pid_t pid = fork();
+  if (pid == 0) {
+    close(1);     // close stdout
+    dup(fd[1]);
+    close(fd[0]);
+    close(fd[1]);
+    static char *args[] = {};
+    execv("./test", args);
   } else {
-    // waitpid(pid, 0, 0);
-    close(pipefd[0]);
-    char msg[] = "hello";
-    write(pipefd[1], msg, strlen(msg));
-    close(pipefd[1]);
-    wait(NULL);
+    printf("main\n");
+    char buffer[16];
+    for (int i = 0; i < 16; i++) {
+      buffer[i] = '_';
+    }
+    read(fd[0], buffer, 15);
+    buffer[15] = 0;
+    printf("buffer: '%s'\n", buffer);
+    close(fd[0]);
+    close(fd[1]);
+    waitpid(pid, NULL, 0);
     exit(EXIT_SUCCESS);
   }
   */
+
+  /*
+  // Attempt to create a socket
+  int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+  if (server_socket == -1) {
+    fprintf(stderr, "Error opening socket. errno(%d): %s\n", errno, strerror(errno));
+    args_client_free(&client_config);
+    return EXIT_FAILURE;
+  }
+
+  // Apply the input config to socket configuration
+  struct sockaddr_in server_address;
+  server_address.sin_family = AF_INET;
+  server_address.sin_port = ARGS_DEFAULT_SERVER_PORT;
+  server_address.sin_addr.s_addr = INADDR_ANY;
+ 
+  // Attempt to make a connection to server
+  printf("<Client> connecting to %s\n", inet_ntoa(server_address.sin_addr));
+  for (int attempts = 4; attempts >= 0; attempts--) {
+    int status = connect(server_socket, (struct sockaddr*) &server_address, sizeof(server_address));
+    if (status != -1) break;
+    if (attempts <= 0) {
+      fprintf(stderr, "Error connecting socket to address %s:%d. errno(%d): %s\n", inet_ntoa(server_address.sin_addr), server_address.sin_port, errno, strerror(errno));
+      return EXIT_FAILURE;
+    }
+    sleep(1);
+    printf("<Client> retry %s\n", inet_ntoa(server_address.sin_addr));
+  }
+  printf("<Client> connected to %s\n", inet_ntoa(server_address.sin_addr));
+
+  // start talkiewalkie state loop
+  tw_state_fn fn = &client_state_idle;
+  while (fn != NULL) {
+    fn = (tw_state_fn)(*fn)(server_socket);
+  }
+
+  close(server_socket);
+  */
+  printf("<Client> exiting\n");
+  return EXIT_SUCCESS;
+}
+
+static void* client_state_idle(int client_socket) {
+  int code = tw_read_code(client_socket);
+  if (code != TW_CODE_IDLE) {
+    printf("Client> ERROR: expected IDLE\n");
+    return NULL;
+  }
+  sleep(2);
+  return &client_state_ping;
+}
+
+static void* client_state_ping(int client_socket) {
+  tw_send_code(client_socket, TW_CODE_PING);
+  int code = tw_read_code(client_socket);
+  if (code != TW_CODE_PONG) {
+    printf("<Client> ERROR: expected PONG\n");
+    return NULL;
+  }
+  return &client_state_idle;
+}
