@@ -8,16 +8,16 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <wait.h>
+#include <pthread.h>
 // #include <sys/types.h>
 // #include <netinet/in.h>
 
 char TW_LOG_PREFIX[] = "<Server>";
+static void* server_state_accept(void*);
 static void* server_state_idle(int);
 
-
 int main(int argc, char** args) {
-  const int is_child_process = argc == 0;
-
+  sleep(2);
   // Create config with input arguments
   struct args_server_config server_config;
   if (args_server_init(&server_config, argc, args) != 0) {
@@ -49,10 +49,6 @@ int main(int argc, char** args) {
     close(server_socket);
     return EXIT_FAILURE;
   }
-  if (is_child_process) {
-    fprintf(stdout, "%07d", server_address.sin_port);
-    sleep(1);
-  }
   printf("<Server> socket bound to %s:%d\n", inet_ntoa(server_address.sin_addr), server_address.sin_port);
 
   // Attempt to make socket listen for clients connecting
@@ -66,15 +62,28 @@ int main(int argc, char** args) {
   // Attemt to accept incoming client connections
   // Only accepting one client at a time, dont see the need
   // to support multiple users at the same time
+  pthread_t thread;
+  pthread_create(&thread, NULL, server_state_accept, &server_socket);
+  pthread_join(thread, NULL);
+  printf("<Server> exiting.\n");
+  close(server_socket);
+  return EXIT_SUCCESS;
+}
+
+static void* server_state_accept(void* arg) {
+  int server_socket = *(int*) arg;
   int client_socket;
   struct sockaddr_in client_address;
   socklen_t client_address_size = sizeof(struct sockaddr_in);
   while (1) {
+    printf("??\n");
     client_socket = accept(server_socket, (struct sockaddr*) &client_address, &client_address_size);
+    printf("!!\n");
     if (client_socket == -1) {
       fprintf(stderr, "Error accepting client connection. errno(%d): %s\n", errno, strerror(errno));
       close(server_socket);
-      return EXIT_FAILURE;
+      pthread_exit(0);
+      // return EXIT_FAILURE;
     }
     printf("<Server> client (%s) connected\n", inet_ntoa(client_address.sin_addr));
 
@@ -88,13 +97,9 @@ int main(int argc, char** args) {
     // close client connection
     printf("<Server> client (%s) disconnected\n", inet_ntoa(client_address.sin_addr));
     close(client_socket);
+    break;
   }
-
-  printf("<Server> exiting.\n");
-  close(server_socket);
-  /*
-  */
-  return EXIT_SUCCESS;
+  pthread_exit(0);
 }
 
 static void* server_state_idle(int client_socket) {

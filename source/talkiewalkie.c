@@ -19,7 +19,8 @@ static const char* TW_CODES[] = {
 
 int tw_read_code(int socket_id) {
   static char buffer[5];
-  recv(socket_id, &buffer, 4, MSG_WAITALL);
+  // recv(socket_id, &buffer, 4, 0);
+  read(socket_id, &buffer, 4);
   int code = atoi(&buffer[1]);
   printf("%s READ %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
   return code;
@@ -29,5 +30,6 @@ void tw_send_code(int socket_id, int code) {
   static char buffer[5];
   snprintf(buffer, 5, "[%02d]", code);
   printf("%s SEND %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
-  send(socket_id, &buffer, 4, 0);
+  // send(socket_id, &buffer, 4, 0);
+  write(socket_id, &buffer, 4);
 }

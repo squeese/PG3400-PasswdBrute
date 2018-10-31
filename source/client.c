@@ -29,74 +29,26 @@ int main(int argc, char** args) {
   // Check if we need to start a local server if there isnt one
   // specified in the configs
   if (client_config.servers == NULL) {
-    int process_pipe[2];
-    pipe(process_pipe);
     pid_t process_id = fork();
     if (process_id == 0) {
-      // This is the child server process.
-      // Rewire the stdout to our custom pipe, so we can communicate.
-      // We need to get the PORT nr that the OS will assign to the server.
-      close(1); 
-      dup(process_pipe[1]);
-      close(process_pipe[0]);
-      close(process_pipe[1]);
       static char* args[] = {};
       execv("./server", args);
       fprintf(stderr, "Error forking child server process. errno(%d): %s\n", errno, strerror(errno));
       exit(EXIT_FAILURE);
     } else {
-      // Read from the pipe (child server process' stdout), to get the PORT nr
-      char buffer[16];
-      printf("ok go\n");
-      int bytes = read(process_pipe[0], buffer, 7);
-      fprintf(stderr, "ok go\n");
-      fprintf(stdout, "ok go\n");
-      buffer[bytes] = 0;
-      // Cleanup/close the pipes, since we dont need them anymore
-      close(process_pipe[0]);
-      close(process_pipe[1]);
       // Create a new server entry in the config for the local child server process.
       struct sockaddr_in* server_address = malloc(sizeof(struct sockaddr_in));
       server_address->sin_family = AF_INET;
-      server_address->sin_port = atoi(buffer);
+      server_address->sin_port = ARGS_DEFAULT_SERVER_PORT;
       server_address->sin_addr.s_addr = INADDR_ANY;
       client_config.num_servers = 1;
       client_config.servers = server_address;
     }
   }
 
-  printf("%s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
+  // printf("%s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
 
-
-/*
-  int fd[2];
-  pipe(fd);
-  pid_t pid = fork();
-  if (pid == 0) {
-    close(1);     // close stdout
-    dup(fd[1]);
-    close(fd[0]);
-    close(fd[1]);
-    static char *args[] = {};
-    execv("./test", args);
-  } else {
-    printf("main\n");
-    char buffer[16];
-    for (int i = 0; i < 16; i++) {
-      buffer[i] = '_';
-    }
-    read(fd[0], buffer, 15);
-    buffer[15] = 0;
-    printf("buffer: '%s'\n", buffer);
-    close(fd[0]);
-    close(fd[1]);
-    waitpid(pid, NULL, 0);
-    exit(EXIT_SUCCESS);
-  }
-  */
-
-  /*
-  // Attempt to create a socket
+  // Attempt to create socket
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (server_socket == -1) {
     fprintf(stderr, "Error opening socket. errno(%d): %s\n", errno, strerror(errno));
@@ -104,25 +56,19 @@ int main(int argc, char** args) {
     return EXIT_FAILURE;
   }
 
-  // Apply the input config to socket configuration
-  struct sockaddr_in server_address;
-  server_address.sin_family = AF_INET;
-  server_address.sin_port = ARGS_DEFAULT_SERVER_PORT;
-  server_address.sin_addr.s_addr = INADDR_ANY;
- 
   // Attempt to make a connection to server
-  printf("<Client> connecting to %s\n", inet_ntoa(server_address.sin_addr));
+  printf("<Client> connecting to %s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
   for (int attempts = 4; attempts >= 0; attempts--) {
-    int status = connect(server_socket, (struct sockaddr*) &server_address, sizeof(server_address));
+    int status = connect(server_socket, (struct sockaddr*) client_config.servers, sizeof(client_config.servers));
     if (status != -1) break;
     if (attempts <= 0) {
-      fprintf(stderr, "Error connecting socket to address %s:%d. errno(%d): %s\n", inet_ntoa(server_address.sin_addr), server_address.sin_port, errno, strerror(errno));
+      fprintf(stderr, "Error connecting socket to address %s:%d. errno(%d): %s\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port, errno, strerror(errno));
       return EXIT_FAILURE;
     }
     sleep(1);
-    printf("<Client> retry %s\n", inet_ntoa(server_address.sin_addr));
+    printf("<Client> retry %s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
   }
-  printf("<Client> connected to %s\n", inet_ntoa(server_address.sin_addr));
+  printf("<Client> connected to %s\n", inet_ntoa(client_config.servers->sin_addr));
 
   // start talkiewalkie state loop
   tw_state_fn fn = &client_state_idle;
@@ -131,7 +77,6 @@ int main(int argc, char** args) {
   }
 
   close(server_socket);
-  */
   printf("<Client> exiting\n");
   return EXIT_SUCCESS;
 }

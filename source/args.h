@@ -1,7 +1,7 @@
 #ifndef BC_ARGS_H
 #define BC_ARGS_H
-#include <sys/socket.h>
-#include <netinet/in.h>
+// #include <sys/socket.h>
+// #include <netinet/in.h>
 
 const unsigned int ARGS_DEFAULT_SERVER_PORT;
 
@@ -21,8 +21,11 @@ struct args_client_config {
   char salt[13];
   char hash[23];
   int num_servers;
-  struct sockaddr_in* servers;
+  int** servers;
+  // struct sockaddr_in* servers;
 };
+
+
 
 int args_client_init(struct args_client_config*, int, char**);
 void args_client_free(struct args_client_config*);
