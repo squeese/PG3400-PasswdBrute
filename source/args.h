@@ -21,11 +21,9 @@ struct args_client_config {
   char salt[13];
   char hash[23];
   int num_servers;
-  int** servers;
-  // struct sockaddr_in* servers;
+  int* servers;
+  struct sockaddr** addresses;
 };
-
-
 
 int args_client_init(struct args_client_config*, int, char**);
 void args_client_free(struct args_client_config*);

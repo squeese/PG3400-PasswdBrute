@@ -4,6 +4,13 @@
 #include <unistd.h>
 #include <string.h>
 
+#include <arpa/inet.h>
+// #include <sys/socket.h>
+// #include <sys/types.h>
+// #include <sys/stat.h>
+#include <sys/un.h>
+// #include <fcntl.h>
+
 const unsigned int ARGS_DEFAULT_SERVER_PORT = 56130;
 static const unsigned int ARGS_DEFAULT_SERVER_THREADS = 8;
 static const unsigned int ARGS_DEFAULT_SERVER_STRIDE = 64;
@@ -100,6 +107,15 @@ static int args_client_info() {
   return EXIT_FAILURE;
 }
 
+static void args_client_push(struct args_client_config* config, struct sockaddr* address) {
+  if (config->addresses == NULL) {
+    config->addresses = malloc(sizeof(struct sockaddr*));
+  } else {
+    config->addresses = realloc(config->addresses, (config->num_servers + 1) * sizeof(struct sockaddr*));
+  }
+  config->addresses[config->num_servers++] = address;
+}
+
 int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->dictionary = (char*) ARGS_DEFAULT_CLIENT_DICTIONARY;
   config->length = ARGS_DEFAULT_CLIENT_LENGTH;
@@ -107,9 +123,10 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->hash[22] = 0;
   config->num_servers = 0;
   config->servers = NULL;
+  config->addresses = NULL;
   opterr = 0;
   int c;
-  while ((c = getopt(argc, args, "d:l:")) != -1) {
+  while ((c = getopt(argc, args, "d:l:s:")) != -1) {
     switch (c) {
       case 'd': {
         int len = strlen(optarg);
@@ -127,10 +144,37 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
         config->length = length;
         break;
       }
+      case 's': {
+        int colon = -1;
+        int len = strlen(optarg);
+        for (int i = 0; i < len; i++) {
+          if (optarg[i] == ':') {
+            colon = i;
+            break;
+          }
+        }
+        printf("s: %s, colon: %d \n", optarg, colon);
+        printf("v %d %ld\n", strncmp(optarg, "/tmp/", 5), strlen(optarg));
+        if (colon != -1 && colon < (len - 1)) {
+
+        } else if (strncmp(optarg, "/tmp/", 5) == 0 && len > 6) {
+          struct sockaddr_un* addr = malloc(sizeof(struct sockaddr_un));
+          memset(addr, 0, sizeof(*addr));
+          addr->sun_family = AF_UNIX;
+          strncpy(addr->sun_path, optarg, sizeof(addr->sun_path) - 1);
+          unlink(optarg);
+          args_client_push(config, (struct sockaddr*) addr);
+        } else {
+          fprintf(stderr, "Option -%c requires a valid format. Either host:port or /sys/pathsocket\n", optopt);
+          return EXIT_FAILURE;
+        }
+        break;
+      }
       case '?':
         switch (optopt) {
           case 'd':
           case 'l':
+          case 's':
             fprintf(stderr, "Option -%c requires an argument\n", optopt);
             break;
           default:
@@ -158,5 +202,10 @@ void args_client_free(struct args_client_config* config) {
   if (config->dictionary != NULL && config->dictionary != ARGS_DEFAULT_CLIENT_DICTIONARY) {
     free(config->dictionary);
     config->dictionary = NULL;
+  }
+  if (config->addresses != NULL) {
+    for (int i = 0; i < config->num_servers; i++)
+      free(config->addresses[i]);
+    free(config->addresses);
   }
 }

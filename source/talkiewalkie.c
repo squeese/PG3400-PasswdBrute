@@ -11,7 +11,7 @@
 extern char TW_LOG_PREFIX[];
 
 static const char* TW_CODES[] = {
-  "IDLE",
+  "READY",
   "EXIT",
   "PING",
   "PONG",
@@ -22,14 +22,14 @@ int tw_read_code(int socket_id) {
   // recv(socket_id, &buffer, 4, 0);
   read(socket_id, &buffer, 4);
   int code = atoi(&buffer[1]);
-  printf("%s READ %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
+  printf("%s %d READ %s %s\n", TW_LOG_PREFIX, socket_id, TW_CODES[code], buffer);
   return code;
 }
 
 void tw_send_code(int socket_id, int code) {
   static char buffer[5];
   snprintf(buffer, 5, "[%02d]", code);
-  printf("%s SEND %s %s\n", TW_LOG_PREFIX, TW_CODES[code], buffer);
+  printf("%s %d SEND %s %s\n", TW_LOG_PREFIX, socket_id, TW_CODES[code], buffer);
   // send(socket_id, &buffer, 4, 0);
   write(socket_id, &buffer, 4);
 }

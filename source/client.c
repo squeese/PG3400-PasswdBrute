@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <arpa/inet.h>
 #include <wait.h>
 
@@ -14,17 +15,14 @@ static void* client_state_idle(int);
 static void* client_state_ping(int);
 
 int main(int argc, char** args) {
-  // Create config with input arguments
   struct args_client_config client_config;
+  struct sockaddr* client_address;
+  int client_address_size;
+
+  // Create config with input arguments
   if (args_client_init(&client_config, argc, args) != 0) {
     return EXIT_FAILURE;
   }
-  printf("\n");
-  printf("<Client> -d %s (dictionary)\n", client_config.dictionary);
-  printf("<Client> -l %d (length)\n", client_config.length);
-  printf("<Client>    %s (salt)\n", client_config.salt);
-  printf("<Client>    %s (hash)\n", client_config.hash);
-  args_client_free(&client_config);
 
   // Check if we need to start a local server if there isnt one
   // specified in the configs
@@ -35,48 +33,49 @@ int main(int argc, char** args) {
       execv("./server", args);
       fprintf(stderr, "Error forking child server process. errno(%d): %s\n", errno, strerror(errno));
       exit(EXIT_FAILURE);
-    } else {
-      // Create a new server entry in the config for the local child server process.
-      struct sockaddr_in* server_address = malloc(sizeof(struct sockaddr_in));
-      server_address->sin_family = AF_INET;
-      server_address->sin_port = ARGS_DEFAULT_SERVER_PORT;
-      server_address->sin_addr.s_addr = INADDR_ANY;
-      client_config.num_servers = 1;
-      client_config.servers = server_address;
     }
-  }
-
-  // printf("%s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
-
-  // Attempt to create socket
-  int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_socket == -1) {
-    fprintf(stderr, "Error opening socket. errno(%d): %s\n", errno, strerror(errno));
-    args_client_free(&client_config);
-    return EXIT_FAILURE;
+    // Create a new server entry in the config for the local child server process.
+    static char* path = "/tmp/bcsocket";
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    int server = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server == -1) {
+      fprintf(stderr, "Error creating socket. errno(%d): %s\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    client_config.num_servers = 1;
+    client_config.servers = malloc(sizeof(int));
+    *(client_config.servers) = server;
+    printf("<Client> UNIX socket %s\n", path);
+    client_address = (struct sockaddr*) &addr;
+    client_address_size = sizeof(addr);
   }
 
   // Attempt to make a connection to server
-  printf("<Client> connecting to %s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
+  printf("<Client> connecting to servers %d\n", *(client_config.servers));
   for (int attempts = 4; attempts >= 0; attempts--) {
-    int status = connect(server_socket, (struct sockaddr*) client_config.servers, sizeof(client_config.servers));
+    int status = connect(*(client_config.servers), client_address, client_address_size);
     if (status != -1) break;
     if (attempts <= 0) {
-      fprintf(stderr, "Error connecting socket to address %s:%d. errno(%d): %s\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port, errno, strerror(errno));
-      return EXIT_FAILURE;
+      fprintf(stderr, "Error connecting to server %d. errno(%d): %s\n", *(client_config.servers), errno, strerror(errno));
+      exit(EXIT_FAILURE);
     }
     sleep(1);
-    printf("<Client> retry %s:%d\n", inet_ntoa(client_config.servers->sin_addr), client_config.servers->sin_port);
+    printf("<Client> retrying server %d\n", *(client_config.servers));
   }
-  printf("<Client> connected to %s\n", inet_ntoa(client_config.servers->sin_addr));
+  printf("<Client> connected to server %d\n", *(client_config.servers));
 
-  // start talkiewalkie state loop
+  // Start the TALKIEWALKIE state loop
   tw_state_fn fn = &client_state_idle;
   while (fn != NULL) {
-    fn = (tw_state_fn)(*fn)(server_socket);
+    fn = (tw_state_fn)(*fn)(*(client_config.servers));
   }
 
-  close(server_socket);
+  // Cleanups
+  close(*(client_config.servers));
+  args_client_free(&client_config);
   printf("<Client> exiting\n");
   return EXIT_SUCCESS;
 }

@@ -26,7 +26,7 @@ clean:
 	rm -rf client server test build/*.o
 
 runclient: client
-	./client \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
+	./client -s /tmp/buttsocket \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
 
 runserver: server
 	./server

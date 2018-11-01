@@ -30,6 +30,12 @@ int main(int argc, char** args) {
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
+
+    struct sockaddr_in addr2;
+    memset(&addr2, 0, sizeof(addr2));
+
+    printf("%ld %ld \n", sizeof(addr), sizeof(addr2));
+
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, file, sizeof(addr.sun_path)-1);
     unlink(file);
@@ -73,11 +79,10 @@ int main(int argc, char** args) {
     while (1) {
       int status = connect(sock, (struct sockaddr*) &addr, sizeof(addr));
       if (status == -1) {
-        perror("client connect");
+        perror("client connect, trying again");
         sleep(1);
         continue;
       }
-      sleep(3);
       tw_read_code(sock);
       tw_read_code(sock);
       tw_read_code(sock);
