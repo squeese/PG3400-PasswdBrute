@@ -15,11 +15,35 @@ int wbuffer_init(struct wbuffer *wb, char* path) {
   return 0;
 }
 
+static int fill(char* line, char* buffer, int* offset, int length, int cap) {
+  if (length == 0 || (*offset + length) >= cap) return 0;
+  memcpy(buffer + *offset, line, length + 1);
+  *(buffer + (*offset + length)) = 0;
+  *offset += length + 1;
+  return 1;
+}
+
+int wbuffer_fill(struct wbuffer* wb, char* buffer, int cap) {
+  static int length = 0;
+  int offset = 0;
+  for (int i = 0; i < cap; i++) *(buffer + i) = 0;
+  if (length) fill(wb->word, buffer, &offset, length, cap);
+  do {
+    length = wbuffer_read(wb);
+  } while (fill(wb->word, buffer, &offset, length, cap));
+  return offset;
+}
+
 int wbuffer_read(struct wbuffer* wb) {
   int cursor;
   wbuffer_reset(wb);
   while ((cursor = getc(wb->fd)) != EOF) {
-    if (cursor == '\n') break;
+    if (cursor == '\n' || cursor == '\r') {
+      do { cursor = getc(wb->fd);
+      } while(cursor == '\n' || cursor == '\r');
+      ungetc(cursor, wb->fd);
+      break;
+    }
     wbuffer_write(wb, cursor);
   }
   return wb->index;

@@ -1,0 +1,7 @@
+dictionary (read words from disk)
+permutation (generate words)
+
+batch
+  buffer
+
+servers

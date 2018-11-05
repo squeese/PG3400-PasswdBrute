@@ -19,13 +19,13 @@ struct args_client_config {
   char* dictionary;
   int length;
   char salt[13];
-  char hash[23];
+  char hash[35];
   int num_servers;
-  int* servers;
-  struct sockaddr** addresses;
+  struct sockaddr** servers;
 };
 
 int args_client_init(struct args_client_config*, int, char**);
+void args_client_push_server(struct args_client_config*, struct sockaddr*);
 void args_client_free(struct args_client_config*);
 
 #endif

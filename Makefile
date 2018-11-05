@@ -1,20 +1,20 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-SHARED = args wbuffer wdictionary wpermutation solvers talkiewalkie tpool
+SHARED = args wbuffer
 
 all: client server
-client: directories binary_server binary_client
+client: directories binary_client
 server: directories binary_server
 test: directories binary_test
 
 binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
-	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lm
+	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lm -lrt
 
 binary_server: $(patsubst %,build/%.o,$(SHARED)) build/server.o
-	$(CC) $(CFLAGS) -o server $^ -lcrypt -pthread -lm
+	$(CC) $(CFLAGS) -o server $^ -lcrypt -pthread -lm -lrt
 
 binary_test: $(patsubst %,build/%.o,$(SHARED)) build/test.o
-	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lm
+	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lm -lrt
 
 build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -26,7 +26,7 @@ clean:
 	rm -rf client server test build/*.o
 
 runclient: client
-	./client -s /tmp/buttsocket \$$1\$$ckvWM6T@\$$H6H/R5d4a/QjpB02Ri/V01
+	./client \$$1\$$9779ofJE\$$MKAskbSv72cuWHNmBHTwX.
 
 runserver: server
 	./server

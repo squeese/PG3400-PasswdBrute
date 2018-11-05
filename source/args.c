@@ -107,23 +107,22 @@ static int args_client_info() {
   return EXIT_FAILURE;
 }
 
-static void args_client_push(struct args_client_config* config, struct sockaddr* address) {
-  if (config->addresses == NULL) {
-    config->addresses = malloc(sizeof(struct sockaddr*));
+void args_client_push_server(struct args_client_config* config, struct sockaddr* server) {
+  if (config->servers == NULL) {
+    config->servers = malloc(sizeof(struct sockaddr*));
   } else {
-    config->addresses = realloc(config->addresses, (config->num_servers + 1) * sizeof(struct sockaddr*));
+    config->servers = realloc(config->servers, (config->num_servers + 1) * sizeof(struct sockaddr*));
   }
-  config->addresses[config->num_servers++] = address;
+  config->servers[config->num_servers++] = server;
 }
 
 int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->dictionary = (char*) ARGS_DEFAULT_CLIENT_DICTIONARY;
   config->length = ARGS_DEFAULT_CLIENT_LENGTH;
-  config->salt[12] = 0;
-  config->hash[22] = 0;
+  config->salt[13] = 0;
+  config->hash[34] = 0;
   config->num_servers = 0;
   config->servers = NULL;
-  config->addresses = NULL;
   opterr = 0;
   int c;
   while ((c = getopt(argc, args, "d:l:s:")) != -1) {
@@ -156,17 +155,22 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
         printf("s: %s, colon: %d \n", optarg, colon);
         printf("v %d %ld\n", strncmp(optarg, "/tmp/", 5), strlen(optarg));
         if (colon != -1 && colon < (len - 1)) {
+          // create 
+          
 
+        /*
         } else if (strncmp(optarg, "/tmp/", 5) == 0 && len > 6) {
+          // Create a config to connect to a local server
           struct sockaddr_un* addr = malloc(sizeof(struct sockaddr_un));
           memset(addr, 0, sizeof(*addr));
           addr->sun_family = AF_UNIX;
           strncpy(addr->sun_path, optarg, sizeof(addr->sun_path) - 1);
           unlink(optarg);
           args_client_push(config, (struct sockaddr*) addr);
+        */
         } else {
-          fprintf(stderr, "Option -%c requires a valid format. Either host:port or /sys/pathsocket\n", optopt);
-          return EXIT_FAILURE;
+          // fprintf(stderr, "Option -%c requires a valid format. Either host:port or /sys/pathsocket\n", optopt);
+          // return EXIT_FAILURE;
         }
         break;
       }
@@ -194,7 +198,7 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
     return args_client_info();
   }
   memcpy(config->salt, args[optind], 12);
-  memcpy(config->hash, args[optind] + 12, 22);
+  memcpy(config->hash, args[optind], 34);
   return EXIT_SUCCESS;
 }
 
@@ -203,9 +207,9 @@ void args_client_free(struct args_client_config* config) {
     free(config->dictionary);
     config->dictionary = NULL;
   }
-  if (config->addresses != NULL) {
+  if (config->servers != NULL) {
     for (int i = 0; i < config->num_servers; i++)
-      free(config->addresses[i]);
-    free(config->addresses);
+      free(*(config->servers + i));
+    free(config->servers);
   }
 }
