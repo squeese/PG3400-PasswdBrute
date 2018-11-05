@@ -1,44 +1,26 @@
+#include "wpermutation.h"
 #include "args.h"
-#include "wbuffer.h"
+#include "tpool.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <arpa/inet.h>
-#include <wait.h>
-#include <pthread.h>
-#include <signal.h>
-#include <mqueue.h>
-#include <fcntl.h>
-#include <sys/prctl.h>
-#include <crypt.h>
 
-static struct args_client_config client_config;
+struct tpool_queue queue;
+struct args_client_config client_config;
 
-int main(int argc, char** args) {
-  args_client_init(&client_config, argc, args);
-  args_client_free(&client_config);
+int main() {
+  struct wpermutation wp;
+  wperm_init(&wp, 3);
+  wperm_update(&wp, 0);
 
-  int size = 400;
-
-  struct wbuffer wb;
-  wbuffer_init(&wb, client_config.dictionary);
-  char* buffer = malloc(sizeof(char) * size);
-
-  // int s = wbuffer_read(&wb);
-  // printf("(%d) '%s'\n", s, wb.word);
-
-  int l;
-  while ((l = wbuffer_fill(&wb, buffer, size)) > 0) {
-    printf("------------\n");
-    printf("(%d) %s\n", l, buffer);
+  char* buffer = malloc(wperm_buffer_size(&wp, 128));
+  int l = wperm_generate(&wp, buffer, 128);
+  for (int i = 0; i < l; i++) {
+    if (*(buffer + i) == 0) {
+      *(buffer + i) = '_';
+    }
   }
+  printf("%d `%s`\n", l, buffer);
+  printf("%d\n", wperm_buffer_size(&wp, 128));
 
-  free(buffer);
   return 0;
 }

@@ -26,7 +26,7 @@ static int fill(char* line, char* buffer, int* offset, int length, int cap) {
 int wbuffer_fill(struct wbuffer* wb, char* buffer, int cap) {
   static int length = 0;
   int offset = 0;
-  for (int i = 0; i < cap; i++) *(buffer + i) = 0;
+  // for (int i = 0; i < cap; i++) *(buffer + i) = 0;
   if (length) fill(wb->word, buffer, &offset, length, cap);
   do {
     length = wbuffer_read(wb);

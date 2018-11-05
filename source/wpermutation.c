@@ -4,8 +4,11 @@
 #include <math.h>
 #include <string.h>
 
-// jstatic const char inputs[] = "abcfghikjlmnopqrstuwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"; // +@£[]}";
-static const char inputs[] = "rstuwxyz1234567890"; // +@£[]}";
+static const char inputs[] = "abcfghikjlmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+// static const char inputs[]="_abcdefghikjlmnopqrstuvWxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!#$\%+-@£/|`'\"\\()[]{}";
+// static const char inputs[]="aHi";
+// static const char inputs[]="abcdefghikjlmnopqrstuvWxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890+@£[]}!#$\%^&*()";
+// static const char inputs[] = "rstuwxyz1234567890"; // +@£[]}";
 // static const char inputs[] = "0123456789";
 
 void wperm_init(struct wpermutation* wp, int word_size) {
@@ -15,7 +18,7 @@ void wperm_init(struct wpermutation* wp, int word_size) {
 	wp->y = calloc(word_size, sizeof(int));
   wp->x = 0;
   int m = (int) pow((double) wp->input_size, (double) word_size);
-  printf("m:%d\n", m);
+  printf("num combinations: %d\n", m);
 }
 
 void wperm_update(struct wpermutation* wp, unsigned int offset) {
@@ -39,7 +42,10 @@ int wperm_generate(struct wpermutation* wp, char* words, unsigned int num) {
 			if ((wp->x + 1) < wp->word_size) {
 				wp->x++;
 			} else {
+				// copy the word over to the buffer
 				memcpy(words + i * (wp->word_size + 1), wp->buffer, wp->word_size);
+				// make sure it ends in a null terminator
+				*(words + i * (wp->word_size + 1) + wp->word_size) = 0;
  				i++;
 			}
 		} else if((wp->x - 1) >= 0) {
@@ -47,10 +53,20 @@ int wperm_generate(struct wpermutation* wp, char* words, unsigned int num) {
 			wp->x--;
 		} else break;
 	}
-	return i;
+	return i * (wp->word_size + 1);
+}
+
+int wperm_buffer_size(struct wpermutation* wp, int num) {
+	return sizeof(char) * (wp->word_size + 1) * num;
 }
 
 void wperm_free(struct wpermutation* wp) {
-  free(wp->buffer);
-  free(wp->y);
+	if (wp->buffer != NULL) {
+  	free(wp->buffer);
+		wp->buffer = NULL;
+	}
+	if (wp->y != NULL) {
+		free(wp->y);
+		wp->y = NULL;
+	}
 }

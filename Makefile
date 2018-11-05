@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-SHARED = args wbuffer
+SHARED = args wbuffer tpool client_thandlers wpermutation
 
 all: client server
 client: directories binary_client
@@ -26,6 +26,9 @@ clean:
 	rm -rf client server test build/*.o
 
 runclient: client
+	./client -l 2 \$$1\$$9779ofJE\$$c.p.EwsI57yV2xjeorQbs1
+
+runclient_great: client
 	./client \$$1\$$9779ofJE\$$MKAskbSv72cuWHNmBHTwX.
 
 runserver: server

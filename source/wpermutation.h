@@ -12,6 +12,8 @@ struct wpermutation {
 void wperm_init(struct wpermutation*, int);
 void wperm_update(struct wpermutation*, unsigned int);
 int wperm_generate(struct wpermutation*, char*, unsigned int);
+// int wperm_fill(struct wpermutation*, char*)
 void wperm_free(struct wpermutation*);
+int wperm_buffer_size(struct wpermutation*, int);
 
 #endif
