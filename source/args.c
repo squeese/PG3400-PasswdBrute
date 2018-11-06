@@ -111,12 +111,12 @@ static int args_client_info() {
 }
 
 void args_client_push_server(struct args_client_config* config, struct sockaddr* server) {
-  if (config->servers == NULL) {
-    config->servers = malloc(sizeof(struct sockaddr*));
+  if (config->server_addrs == NULL) {
+    config->server_addrs = malloc(sizeof(struct sockaddr*));
   } else {
-    config->servers = realloc(config->servers, (config->num_servers + 1) * sizeof(struct sockaddr*));
+    config->server_addrs = realloc(config->server_addrs, (config->server_count + 1) * sizeof(struct sockaddr*));
   }
-  config->servers[config->num_servers++] = server;
+  config->server_addrs[config->server_count++] = server;
 }
 
 static void args_client_push_input(struct args_client_config* config, char c) {
@@ -152,8 +152,8 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->word_length_max = ARGS_DEFAULT_CLIENT_WORD_LENGTH_MAX;
   config->salt[13] = 0;
   config->hash[34] = 0;
-  config->num_servers = 0;
-  config->servers = NULL;
+  config->server_count = 0;
+  config->server_addrs = NULL;
   config->thread_buffer_size = ARGS_DEFAULT_CLIENT_THREAD_BUFFER_SIZE;
   config->thread_count = ARGS_DEFAULT_CLIENT_THREAD_COUNT;
   opterr = 0;
@@ -280,32 +280,33 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
         break;
       }
       case 's': {
-        int colon = -1;
         int len = strlen(optarg);
-        for (int i = 0; i < len; i++) {
-          if (optarg[i] == ':') {
-            colon = i;
-            break;
-          }
-        }
-        printf("s: %s, colon: %d \n", optarg, colon);
-        printf("v %d %ld\n", strncmp(optarg, "/tmp/", 5), strlen(optarg));
-        if (colon != -1 && colon < (len - 1)) {
-          // create 
-        /*
-        } else if (strncmp(optarg, "/tmp/", 5) == 0 && len > 6) {
+        if (strncmp(optarg, "/tmp/", 5) == 0 && len > 6) {
           // Create a config to connect to a local server
-          struct sockaddr_un* addr = malloc(sizeof(struct sockaddr_un));
+          struct sockaddr_un* addr = calloc(1, sizeof(struct sockaddr_un));
           memset(addr, 0, sizeof(*addr));
           addr->sun_family = AF_UNIX;
           strncpy(addr->sun_path, optarg, sizeof(addr->sun_path) - 1);
           unlink(optarg);
-          args_client_push(config, (struct sockaddr*) addr);
-        */
+          args_client_push_server(config, (struct sockaddr*) addr);
         } else {
-          // fprintf(stderr, "Option -%c requires a valid format. Either host:port or /sys/pathsocket\n", optopt);
-          // return EXIT_FAILURE;
+          // assume proper ip address =)
+          int colon = -1;
+          for (int i = 0; i < len; i++) {
+            if (optarg[i] != ':') continue;
+            *(optarg + i) = 0;
+            colon = i;
+            break;
+          }
+          struct sockaddr_in* addr = calloc(1, sizeof(struct sockaddr_in));
+          addr->sin_family = AF_INET;
+          addr->sin_port = (colon >= 0 && (colon + 1) < len) ? atoi(optarg + colon + 1) : (int)ARGS_DEFAULT_SERVER_PORT;
+          addr->sin_addr.s_addr = (colon < 1) ? INADDR_ANY : inet_addr(optarg);
+          args_client_push_server(config, (struct sockaddr*) addr);
         }
+
+            // fprintf(stderr, "  Unable to open socket on `%s`. errno(%d): %s\n\n", optopt, errno, strerror(errno));
+          // int id = socket(AF_UNIX, SOCK_STREAM, 0);
         break;
       }
       case '?':
@@ -357,9 +358,9 @@ void args_client_free(struct args_client_config* config) {
     free(config->input_buffer);
     config->input_buffer = NULL;
   }
-  if (config->servers != NULL) {
-    for (int i = 0; i < config->num_servers; i++)
-      free(*(config->servers + i));
-    free(config->servers);
+  if (config->server_addrs != NULL) {
+    for (int i = 0; i < config->server_count; i++)
+      free(*(config->server_addrs + i));
+    free(config->server_addrs);
   }
 }

@@ -30,7 +30,7 @@ void progress_finish(struct progress* prog) {
 void progress_update(struct progress* prog, long value) {
   double elapsed = time(NULL) - prog->time_started;
   prog->val += value;
-  double spv = (double) prog->val / (prog->max * 0.97);
+  double spv = (double) prog->val / prog->max;
   time_t est = (elapsed / spv) - elapsed;
   strftime(prog->buffer, 12, " %2H:%2M:%2S ", localtime(&est));
   for (int i = 0; i < 20; i++) {

@@ -34,29 +34,81 @@ int main(int argc, char** args) {
 
   int dictionary_index = 0;
   int combinator_index = client_config.word_length_min;
-  int running_workers = client_config.thread_count;
+  int running_workers = 0;
   char* password = NULL;
   struct tpool tp;
   struct progress prog;
   struct tpool_signal tsignal;
   struct wbuffer wb;
   struct wpermutation wperm;
-  tpool_init(&tp, client_config.thread_count);
   memset(&tsignal, 0, sizeof(struct tpool_signal));
 
-  // Queue up a signal to start a provider
+  for (int i = 0; i < )
+
+  // Worker threads
+  if (client_config.server_count == 0) {
+    // Local worker threads that takes word stream data and tries to find hash
+    // that matches
+    tpool_init(&tp, client_config.thread_count);
+    for (int i = 0; i < tp.num_workers; i++)
+      pthread_create(tp.workers + i, NULL, &thread_worker_local_encrypt, NULL);
+    // No need to wait for local workers to all boot/connect/whatevs
+    // Queue up a signal to start a provider, as the first action we take in signal loop below
+    running_workers = client_config.thread_count;
+  } else {
+    // User has specified server address(es) in config, user our worker threads
+    // to tunnel the data to the servers instead, 2 threads for each server, in/out
+    tpool_init(&tp, client_config.server_count * 2);
+    // Connect first
+    for (int i = 0; i < client_config.server_count; i++) {
+      pthread_create(tp.workers + i, NULL, &thread_worker_connect_remote, client_config.server_addrs + i);
+      tpool_queue_read(queue.signal_out, &tsignal, 1);
+    }
+    /*
+    int error;
+    int* sockets = malloc(client_config.servers_count * sizeof(int*));
+    for (int i = 0; i < client_config.server_count; i++) {
+      pthread_join(*(tp.workers + i), &(sockets + i));
+      if ((sockets + i) == NULL) error = 1;
+    }
+    if (error) {
+      for (int i = 0; i < client_config.server_count; i++)
+        if ((sockets + i) != NULL) close(*(sockets + 1));
+      tpool_free(&tp);
+      tpool_queue_free(&queue);
+      args_client_free(&client_config);
+      return EXIT_FAILURE;
+    }
+    for (int i = 0; i < tp.num_workers; i += 2) {
+      pthread_create(tp.workers + i, NULL, &thread_worker_read_remote, );
+    }
+    */
+  }
+
+  // Start in this state
   tsignal.flag = SIGNAL_PROVIDER_START;
   tpool_queue_send(queue.signal_out, &tsignal, 2);
-
-  // Threads: spawn threads that will consume buffers of words to match against hash
-  for (int i = 0; i < tp.num_workers; i++) {
-    pthread_create(tp.workers + i, NULL, &thread_encrypt_worker_local, NULL);
-  }
 
   // Read signales from threads
   while (tpool_queue_read(queue.signal_out, &tsignal)) {
 
-    if (SIGNAL_DICTIONARY_COMPLETE & tsignal.flag) {
+    if (SIGNAL_WORKLOAD_COMPLETED == tsignal.flag) {
+      struct tpool_work* twork = (struct tpool_work*) tsignal.arg;
+      if (twork->pass != NULL) {
+        int len = strlen(twork->pass);
+        password = malloc((len + 1) * sizeof(char));
+        memcpy(password, twork->pass, len);
+        *(password + len) = 0;
+        tpool_provider_close(&tp, &thread_words_from_dictionary_provider);
+        tpool_provider_close(&tp, &thread_words_from_permutation_provider);
+      }
+      progress_update(&prog, twork->length);
+      free(twork->buffer);
+      free(twork);
+      continue;
+    }
+
+    if (SIGNAL_DICTIONARY_COMPLETED == tsignal.flag) {
       dictionary_index++;
       progress_finish(&prog);
       // stop the dictionary thread
@@ -67,7 +119,7 @@ int main(int argc, char** args) {
       }
     }
 
-    if (SIGNAL_PERMUTATION_COMPLETE & tsignal.flag) {
+    if (SIGNAL_PERMUTATION_COMPLETED == tsignal.flag) {
       combinator_index++;
       progress_finish(&prog);
       if (tpool_provider_close(&tp, &thread_words_from_permutation_provider) == 0) {
@@ -77,7 +129,13 @@ int main(int argc, char** args) {
       }
     }
 
-    if ((SIGNAL_PROVIDER_START | SIGNAL_DICTIONARY_COMPLETE | SIGNAL_PERMUTATION_COMPLETE) & tsignal.flag) {
+    if (SIGNAL_REMOTE_CONNECTED == tsignal.flag) {
+      if (++running_workers < client_config.server_count) continue;
+      // Change signal flag, and let it fall through, as all workers are connected to remote servers
+      tsignal.flag = SIGNAL_PROVIDER_START;
+    }
+
+    if ((SIGNAL_PROVIDER_START | SIGNAL_DICTIONARY_COMPLETED | SIGNAL_PERMUTATION_COMPLETED) & tsignal.flag) {
       if (dictionary_index < client_config.dictionary_count) {
         progress_init(&prog);
         // Spawn word dictionary provider
@@ -99,23 +157,14 @@ int main(int argc, char** args) {
       continue;
     }
 
-    if (SIGNAL_WORKLOAD_COMPLETE == tsignal.flag) {
-      struct tpool_work* twork = (struct tpool_work*) tsignal.arg;
-      if (twork->pass != NULL) {
-        int len = strlen(twork->pass);
-        password = malloc((len + 1) * sizeof(char));
-        memcpy(password, twork->pass, len);
-        *(password + len) = 0;
-        tpool_provider_close(&tp, &thread_words_from_dictionary_provider);
-        tpool_provider_close(&tp, &thread_words_from_permutation_provider);
-      }
-      progress_update(&prog, twork->length);
-      free(twork->buffer);
-      free(twork);
+    if (SIGNAL_REMOTE_DISCONNECTED == tsignal.flag) {
+      printf("signal_server_disconnected\n");
+      ++running_workers;
+      tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.server_count);
       continue;
     }
 
-    if (SIGNAL_WORKER_EXIT == tsignal.flag) {
+    if ((SIGNAL_WORKER_EXIT | SIGNAL_REMOTE_DISCONNECTED) & tsignal.flag) {
       if (--running_workers == 0) break;
     }
   }

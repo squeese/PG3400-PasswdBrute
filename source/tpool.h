@@ -9,9 +9,15 @@ enum {
   SIGNAL_WORKER_EXIT = 2,
   SIGNAL_PROVIDER_START = 4,
   SIGNAL_WORKLOAD_START = 8,
-  SIGNAL_WORKLOAD_COMPLETE = 16,
-  SIGNAL_DICTIONARY_COMPLETE = 32,
-  SIGNAL_PERMUTATION_COMPLETE = 64,
+  SIGNAL_WORKLOAD_COMPLETED = 16,
+  SIGNAL_DICTIONARY_COMPLETED = 32,
+  SIGNAL_PERMUTATION_COMPLETED = 64,
+  SIGNAL_REMOTE_CONNECTED = 128,
+  SIGNAL_REMOTE_DISCONNECTED = 256,
+
+  SIGNAL_CONNECTION_SUCCESS = 512,
+  SIGNAL_CONNECTION_FAILED = 1024,
+  SIGNAL_CONNECTION_DROPPED = 2048,
 };
 
 struct tpool_signal {
@@ -32,6 +38,8 @@ struct tpool_queue {
   struct mq_attr signal_out_attr;
   mqd_t signal_in;
   mqd_t signal_out;
+  pthread_mutex_t lock;
+  pthread_cond_t condition;
 };
 
 struct tpool {

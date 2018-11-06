@@ -16,16 +16,16 @@ int args_server_init(struct args_server_config*, int, char**);
 void args_server_free(struct args_server_config*);
 
 struct args_client_config {
+  char salt[13];
+  char hash[35];
   char** dictionary_paths;
   int dictionary_count;
   char* input_buffer;
   int input_length;
   int word_length_min;
   int word_length_max;
-  char salt[13];
-  char hash[35];
-  int num_servers;
-  struct sockaddr** servers;
+  int server_count;
+  struct sockaddr** server_addrs;
   int thread_buffer_size;
   int thread_count;
 };

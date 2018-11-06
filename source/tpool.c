@@ -38,6 +38,8 @@ void tpool_free(struct tpool* tp) {
 }
 
 int tpool_queue_init(struct tpool_queue* queue) {
+  pthread_mutex_init(&queue->lock, NULL);
+  pthread_cond_init(&queue->condition, NULL);
   queue->signal_in_attr.mq_maxmsg = 3;
   queue->signal_out_attr.mq_maxmsg = 3; 
   queue->signal_in_attr.mq_msgsize = signal_size;
@@ -70,5 +72,14 @@ int tpool_queue_free(struct tpool_queue* queue) {
     mq_close(queue->signal_out);
     mq_unlink(mqueue_out_path);
   }
+  pthread_mutex_destroy(&queue->lock);
+  pthread_cond_destroy(&queue->condition);
   return 0;
 }
+/*
+
+MAION
+
+
+
+*/

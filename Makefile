@@ -13,7 +13,7 @@ binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
 binary_server: $(patsubst %,build/%.o,$(SHARED)) build/server.o
 	$(CC) $(CFLAGS) -o server $^ -lcrypt -pthread -lm -lrt
 
-binary_test: $(patsubst %,build/%.o,$(SHARED)) build/test.o
+binary_test: build/test.o
 	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lm -lrt
 
 build/%.o: source/%.c

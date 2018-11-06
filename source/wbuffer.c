@@ -39,6 +39,12 @@ int wbuffer_fill(struct wbuffer* wb, char* buffer, int cap) {
   return offset;
 }
 
+int wbuffer_word(struct wbuffer* wb, int max) {
+  int length;
+  while ((length = wbuffer_read(wb)) >= max);
+  return length;
+}
+
 int wbuffer_read(struct wbuffer* wb) {
   int cursor;
   wbuffer_reset(wb);
@@ -51,11 +57,12 @@ int wbuffer_read(struct wbuffer* wb) {
     }
     wbuffer_write(wb, cursor);
   }
+  *(wb->word + wb->index) = 0;
   return wb->index;
 }
 
 void wbuffer_write(struct wbuffer* wb, char c) {
-  if (wb->index == wb->size) {
+  if ((wb->index + 1) == wb->size) {
     int size = wb->size * 2;
     if (wb->word == wb->stack) {
       wb->word = malloc(size * sizeof(char));
