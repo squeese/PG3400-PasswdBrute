@@ -42,50 +42,10 @@ int main(int argc, char** args) {
   struct wbuffer wb;
   struct wpermutation wperm;
   memset(&tsignal, 0, sizeof(struct tpool_signal));
-
-  for (int i = 0; i < )
-
-  // Worker threads
-  if (client_config.server_count == 0) {
-    // Local worker threads that takes word stream data and tries to find hash
-    // that matches
-    tpool_init(&tp, client_config.thread_count);
-    for (int i = 0; i < tp.num_workers; i++)
-      pthread_create(tp.workers + i, NULL, &thread_worker_local_encrypt, NULL);
-    // No need to wait for local workers to all boot/connect/whatevs
-    // Queue up a signal to start a provider, as the first action we take in signal loop below
-    running_workers = client_config.thread_count;
-  } else {
-    // User has specified server address(es) in config, user our worker threads
-    // to tunnel the data to the servers instead, 2 threads for each server, in/out
-    tpool_init(&tp, client_config.server_count * 2);
-    // Connect first
-    for (int i = 0; i < client_config.server_count; i++) {
-      pthread_create(tp.workers + i, NULL, &thread_worker_connect_remote, client_config.server_addrs + i);
-      tpool_queue_read(queue.signal_out, &tsignal, 1);
-    }
-    /*
-    int error;
-    int* sockets = malloc(client_config.servers_count * sizeof(int*));
-    for (int i = 0; i < client_config.server_count; i++) {
-      pthread_join(*(tp.workers + i), &(sockets + i));
-      if ((sockets + i) == NULL) error = 1;
-    }
-    if (error) {
-      for (int i = 0; i < client_config.server_count; i++)
-        if ((sockets + i) != NULL) close(*(sockets + 1));
-      tpool_free(&tp);
-      tpool_queue_free(&queue);
-      args_client_free(&client_config);
-      return EXIT_FAILURE;
-    }
-    for (int i = 0; i < tp.num_workers; i += 2) {
-      pthread_create(tp.workers + i, NULL, &thread_worker_read_remote, );
-    }
-    */
-  }
-
-  // Start in this state
+  tpool_init(&tp, client_config.thread_count);
+  for (int i = 0; i < tp.num_workers; i++)
+    pthread_create(tp.workers + i, NULL, &thread_worker_local_encrypt, NULL);
+  running_workers = client_config.thread_count;
   tsignal.flag = SIGNAL_PROVIDER_START;
   tpool_queue_send(queue.signal_out, &tsignal, 2);
 
@@ -129,12 +89,6 @@ int main(int argc, char** args) {
       }
     }
 
-    if (SIGNAL_REMOTE_CONNECTED == tsignal.flag) {
-      if (++running_workers < client_config.server_count) continue;
-      // Change signal flag, and let it fall through, as all workers are connected to remote servers
-      tsignal.flag = SIGNAL_PROVIDER_START;
-    }
-
     if ((SIGNAL_PROVIDER_START | SIGNAL_DICTIONARY_COMPLETED | SIGNAL_PERMUTATION_COMPLETED) & tsignal.flag) {
       if (dictionary_index < client_config.dictionary_count) {
         progress_init(&prog);
@@ -157,14 +111,7 @@ int main(int argc, char** args) {
       continue;
     }
 
-    if (SIGNAL_REMOTE_DISCONNECTED == tsignal.flag) {
-      printf("signal_server_disconnected\n");
-      ++running_workers;
-      tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.server_count);
-      continue;
-    }
-
-    if ((SIGNAL_WORKER_EXIT | SIGNAL_REMOTE_DISCONNECTED) & tsignal.flag) {
+    if (SIGNAL_WORKER_EXIT == tsignal.flag) {
       if (--running_workers == 0) break;
     }
   }
@@ -189,3 +136,17 @@ int main(int argc, char** args) {
   tpool_free(&tp);
   return EXIT_SUCCESS;
 }
+/*
+
+
+     main thread       theads                            mainthread
+                       threads
+    provider
+
+    threads
+    threads
+    thread
+
+
+
+*/
