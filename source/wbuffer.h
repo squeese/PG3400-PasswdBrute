@@ -16,16 +16,11 @@ struct wbuffer {
   FILE* fd;
 };
 
-int wbuffer_init(struct wbuffer*, char*);
-
+int wbuffer_init(struct wbuffer*, char*, long*);
 void wbuffer_free(struct wbuffer*);
-
 int wbuffer_fill(struct wbuffer*, char*, int);
-
 int wbuffer_read(struct wbuffer*);
-
 void wbuffer_write(struct wbuffer*, char);
-
 void wbuffer_reset(struct wbuffer*);
 
 #endif

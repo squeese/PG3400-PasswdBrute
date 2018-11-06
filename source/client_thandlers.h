@@ -3,7 +3,6 @@
 #include "tpool.h"
 #include "args.h"
 
-// arf
 struct thread_cleanup_t {
   char** buffer;
   void* arg;

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <errno.h>
 
-int wbuffer_init(struct wbuffer *wb, char* path) {
+int wbuffer_init(struct wbuffer *wb, char* path, long* size) {
   wb->word = wb->stack;
   wb->index = 0;
   wb->size = WBUFFER_INITIAL_SIZE;
@@ -11,6 +11,11 @@ int wbuffer_init(struct wbuffer *wb, char* path) {
   if (wb->fd == NULL) {
     printf("Unable to open dictionary file at given path: %s\nError: (%d) %s\n", path, errno, strerror(errno));
     return errno;
+  }
+  if (size != NULL) {
+    fseek(wb->fd, 0, SEEK_END);
+    *size = ftell(wb->fd);
+    fseek(wb->fd, 0, SEEK_SET);
   }
   return 0;
 }
@@ -57,6 +62,7 @@ void wbuffer_write(struct wbuffer* wb, char c) {
       memcpy(wb->word, wb->stack, WBUFFER_INITIAL_SIZE);
     } else {
       wb->word = realloc(wb->word, size * sizeof(char));
+      wb->size = size;
     }
   }
   *(wb->word + wb->index++) = c;

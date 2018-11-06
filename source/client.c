@@ -3,8 +3,12 @@
 #include "tpool.h"
 #include "wbuffer.h"
 #include "wpermutation.h"
+#include "progress.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
 
 struct args_client_config client_config;
 struct tpool_queue queue;
@@ -16,6 +20,11 @@ int main(int argc, char** args) {
     return EXIT_FAILURE;
   }
 
+  printf("> HASH    : %s\n", client_config.hash);
+  printf("> INPUTS  : length:%d, %s\n", client_config.input_length, client_config.input_buffer);
+  printf("> LENGTH  : start:%d, end:%d\n", client_config.word_length_min, client_config.word_length_max);
+  printf("> THREAD  : count:%d, size:%d\n", client_config.thread_count, client_config.thread_buffer_size);
+
   // Thread pool stuffses
   if (tpool_queue_init(&queue) != 0) {
     args_client_free(&client_config);
@@ -23,77 +32,106 @@ int main(int argc, char** args) {
     return EXIT_FAILURE;
   }
 
-  // Threads: initialize
+  int dictionary_index = 0;
+  int combinator_index = client_config.word_length_min;
+  int running_workers = client_config.thread_count;
+  char* password = NULL;
   struct tpool tp;
-  tpool_init(&tp, 6);
-
-  // Threads: spawn thread that will create buffers of words to match against hash
-  // read from files with wbuffer_t
+  struct progress prog;
+  struct tpool_signal tsignal;
   struct wbuffer wb;
-  wbuffer_init(&wb, client_config.dictionary);
-  tpool_provider_create(&tp, &thread_words_from_dictionary_provider, &wb);
-
-  // when wbuffer (dictionary files) are done, we use this wperm_t (generate words)
-  // to guess further
   struct wpermutation wperm;
+  tpool_init(&tp, client_config.thread_count);
+  memset(&tsignal, 0, sizeof(struct tpool_signal));
+
+  // Queue up a signal to start a provider
+  tsignal.flag = SIGNAL_PROVIDER_START;
+  tpool_queue_send(queue.signal_out, &tsignal, 2);
 
   // Threads: spawn threads that will consume buffers of words to match against hash
   for (int i = 0; i < tp.num_workers; i++) {
     pthread_create(tp.workers + i, NULL, &thread_encrypt_worker_local, NULL);
   }
 
-  // Read responses from threads
-  int running_workers = tp.num_workers;
-  struct tpool_signal tsignal;
-  while (1) {
-    tpool_queue_read(queue.signal_out, &tsignal);
+  // Read signales from threads
+  while (tpool_queue_read(queue.signal_out, &tsignal)) {
+
+    if (SIGNAL_DICTIONARY_COMPLETE & tsignal.flag) {
+      dictionary_index++;
+      progress_finish(&prog);
+      // stop the dictionary thread
+      if (tpool_provider_close(&tp, &thread_words_from_dictionary_provider) == 0) {
+        // the provider was closed via pthread, that means we found a password
+        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
+        continue;
+      }
+    }
+
+    if (SIGNAL_PERMUTATION_COMPLETE & tsignal.flag) {
+      combinator_index++;
+      progress_finish(&prog);
+      if (tpool_provider_close(&tp, &thread_words_from_permutation_provider) == 0) {
+        // the provider was closed via phtread, that means we found a password
+        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
+        continue;
+      }
+    }
+
+    if ((SIGNAL_PROVIDER_START | SIGNAL_DICTIONARY_COMPLETE | SIGNAL_PERMUTATION_COMPLETE) & tsignal.flag) {
+      if (dictionary_index < client_config.dictionary_count) {
+        progress_init(&prog);
+        // Spawn word dictionary provider
+        char* path = *(client_config.dictionary_paths + dictionary_index);
+        if (wbuffer_init(&wb, path, &prog.max) != 0) {
+          tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
+        } else {
+          progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
+          tpool_provider_create(&tp, &thread_words_from_dictionary_provider, &wb);
+        }
+      } else if (combinator_index <= client_config.word_length_max) {
+        progress_init(&prog);
+        wperm_init(&wperm, combinator_index, client_config.input_buffer, client_config.input_length, &prog.max);
+        progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %ld", combinator_index, client_config.input_length, wperm.solutions));
+        tpool_provider_create(&tp, &thread_words_from_permutation_provider, &wperm);
+      } else {
+        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
+      }
+      continue;
+    }
+
     if (SIGNAL_WORKLOAD_COMPLETE == tsignal.flag) {
       struct tpool_work* twork = (struct tpool_work*) tsignal.arg;
       if (twork->pass != NULL) {
-        // tpool_provider_close(&tp, &thread_words_from_dictionary_provider);
-        // tpool_provider_close(&tp, &thread_words_from_permutation_provider);
+        int len = strlen(twork->pass);
+        password = malloc((len + 1) * sizeof(char));
+        memcpy(password, twork->pass, len);
+        *(password + len) = 0;
+        tpool_provider_close(&tp, &thread_words_from_dictionary_provider);
+        tpool_provider_close(&tp, &thread_words_from_permutation_provider);
       }
-      // printf("FREE %p\n", twork);
+      progress_update(&prog, twork->length);
       free(twork->buffer);
       free(twork);
       continue;
     }
-    if (SIGNAL_DICTIONARY_COMPLETE == tsignal.flag) {
-      // printf("Dictionary (%s) finished.\n", client_config.dictionary);
-      // stop the dictionary thread
-      if (tpool_provider_close(&tp, &thread_words_from_dictionary_provider)) {
-        // run word permutator (word generator)
-        // printf("start perm\n");
-        wperm_init(&wperm, 1);
-        wperm_update(&wperm, 0);
-        tpool_provider_create(&tp, &thread_words_from_permutation_provider, &wperm);
-      }
-      continue;
-    } 
-    if (SIGNAL_PERMUTATION_COMPLETE == tsignal.flag) {
-      printf("Permutatuion (%d) finished.\n", wperm.word_size);
-      int next = wperm.word_size + 1;
-      if (tpool_provider_close(&tp, &thread_words_from_permutation_provider) && next <= client_config.length) {
-        // printf("restart! %d \n", next);
-        wperm_init(&wperm, next);
-        wperm_update(&wperm, 0);
-        tpool_provider_create(&tp, &thread_words_from_permutation_provider, &wperm);
-      } else {
-        tpool_provider_create(&tp, &thread_issue_close_signal, &tp.num_workers);
-      }
-      continue;
-    }
+
     if (SIGNAL_WORKER_EXIT == tsignal.flag) {
-      running_workers--;
-      if (running_workers == 0) break;
-      continue;
+      if (--running_workers == 0) break;
     }
   }
+  printf("\n\n");
 
   // Waiting for worker threads to completely finish
-  // printf("waiting..\n");
   for (int i = 0; i < tp.num_workers; i++) {
     pthread_join(*(tp.workers + i), NULL);
+  }
+
+  // Reportskies
+  if (password != NULL) {
+    printf("> PASSWORD: %s\n", password);
+    free(password);
+  } else {
+    printf("> PASSWORD not found =(\n");
   }
 
   // Cleanup

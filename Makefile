@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-SHARED = args wbuffer tpool client_thandlers wpermutation
+SHARED = args wbuffer tpool client_thandlers wpermutation progress
 
 all: client server
 client: directories binary_client
@@ -36,3 +36,6 @@ runserver: server
 
 runtest: test
 	./test
+
+runshell: client
+	./cron.sh

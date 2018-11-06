@@ -4,21 +4,17 @@
 #include <math.h>
 #include <string.h>
 
-static const char inputs[] = "abcfghikjlmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
-// static const char inputs[]="_abcdefghikjlmnopqrstuvWxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!#$\%+-@£/|`'\"\\()[]{}";
-// static const char inputs[]="aHi";
-// static const char inputs[]="abcdefghikjlmnopqrstuvWxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890+@£[]}!#$\%^&*()";
-// static const char inputs[] = "rstuwxyz1234567890"; // +@£[]}";
-// static const char inputs[] = "0123456789";
-
-void wperm_init(struct wpermutation* wp, int word_size) {
+void wperm_init(struct wpermutation* wp, int word_size, char* inputs, int input_size, long* total) {
   wp->word_size = word_size;
-  wp->input_size = sizeof(inputs) / sizeof(char) - 1;
+	wp->inputs = inputs;
+	wp->input_size = input_size;
 	wp->buffer = calloc(word_size + 1, sizeof(char));
 	wp->y = calloc(word_size, sizeof(int));
   wp->x = 0;
-  int m = (int) pow((double) wp->input_size, (double) word_size);
-  printf("num combinations: %d\n", m);
+	wp->solutions = (long) pow((double) wp->input_size, (double) word_size);
+	if (total != NULL) {
+  	*total = wp->solutions * (word_size + 1);
+	}
 }
 
 void wperm_update(struct wpermutation* wp, unsigned int offset) {
@@ -38,7 +34,7 @@ int wperm_generate(struct wpermutation* wp, char* words, unsigned int num) {
 	while (i < num) {
 		if ((wp->y[wp->x] + 1) < wp->input_size) {
 			wp->y[wp->x]++;
-			wp->buffer[wp->x] = inputs[wp->y[wp->x]];
+			wp->buffer[wp->x] = wp->inputs[wp->y[wp->x]];
 			if ((wp->x + 1) < wp->word_size) {
 				wp->x++;
 			} else {
@@ -54,10 +50,6 @@ int wperm_generate(struct wpermutation* wp, char* words, unsigned int num) {
 		} else break;
 	}
 	return i * (wp->word_size + 1);
-}
-
-int wperm_buffer_size(struct wpermutation* wp, int num) {
-	return sizeof(char) * (wp->word_size + 1) * num;
 }
 
 void wperm_free(struct wpermutation* wp) {
