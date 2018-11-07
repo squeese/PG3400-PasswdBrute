@@ -3,60 +3,56 @@
 #include <pthread.h>
 #include <mqueue.h>
 
-typedef void*(*tpool_handler_fn)(void*);
-
 enum {
-  SIGNAL_WORKER_EXIT = 2,
-  SIGNAL_PROVIDER_START = 4,
-  SIGNAL_WORKLOAD_START = 8,
-  SIGNAL_WORKLOAD_COMPLETED = 16,
-  SIGNAL_DICTIONARY_COMPLETED = 32,
-  SIGNAL_PERMUTATION_COMPLETED = 64,
-  SIGNAL_REMOTE_CONNECTED = 128,
-  SIGNAL_REMOTE_DISCONNECTED = 256,
-
-  SIGNAL_CONNECTION_SUCCESS = 512,
-  SIGNAL_CONNECTION_FAILED = 1024,
-  SIGNAL_CONNECTION_DROPPED = 2048,
+  TPOOL_WSOLVER_WORK = 1,
+  TPOOL_WDICTIONARY_WORK = 2,
+  TPOOL_WCOMBINATIONS_WORK = 3,
+  TPOOL_THREAD_LOAD = 4,
+  TPOOL_THREAD_EXIT = 5,
 };
 
-struct tpool_signal {
-  int flag;
-  void *arg;
-};
-
-struct tpool_work {
-  char* salt;
-  char* hash;
-  char* pass;
+struct tmp_work {
   char* buffer;
   int length;
 };
 
-struct tpool_queue {
-  struct mq_attr signal_in_attr;
-  struct mq_attr signal_out_attr;
-  mqd_t signal_in;
-  mqd_t signal_out;
-  pthread_mutex_t lock;
-  pthread_cond_t condition;
-};
-
 struct tpool {
-  int num_workers;
-  pthread_t* workers;
-  pthread_t* provider;
-  tpool_handler_fn provider_fn;
+  struct mq_attr queue_threads_attr;
+  struct mq_attr queue_control_attr;
+  mqd_t queue_threads;
+  mqd_t queue_control;
+  pthread_t* threads;
+  int count;
 };
 
-void tpool_init(struct tpool*, int);
-void tpool_provider_create(struct tpool*, tpool_handler_fn, void*);
-int tpool_provider_close(struct tpool*, tpool_handler_fn);
-void tpool_free(struct tpool*);
+struct tpool_message {
+  int flag;
+  void* arg;
+};
 
-int tpool_queue_init(struct tpool_queue*);
-int tpool_queue_send(mqd_t, struct tpool_signal*, int);
-int tpool_queue_read(mqd_t, struct tpool_signal*);
-int tpool_queue_free(struct tpool_queue*);
+typedef int (*tpool_routine)(struct tpool*, struct tpool_message*, pthread_mutex_t* lock);
+
+struct tpool_context {
+  struct tpool* tp;
+  tpool_routine fn;
+  pthread_t thread;
+  pthread_mutex_t lock;
+  // pthread_cond_t cond;
+};
+
+
+int tpool_init(struct tpool*);
+void tpool_free(struct tpool*);
+struct tpool_context* tpool_run(struct tpool*, tpool_routine);
+int tpool_read(mqd_t, struct tpool_message*);
+int tpool_send(mqd_t, struct tpool_message*, int, void*, int);
+void tpool_cancel(struct tpool_context*);
+
+// void tpool_provider_create(struct tpool*, tpool_handler_fn, void*);
+// int tpool_provider_close(struct tpool*, tpool_handler_fn);
+// int tpool_queue_init(struct tpool_queue*);
+// int tpool_queue_send(mqd_t, struct tpool_signal*, int);
+// int tpool_queue_read(mqd_t, struct tpool_signal*);
+// int tpool_queue_free(struct tpool_queue*);
 
 #endif

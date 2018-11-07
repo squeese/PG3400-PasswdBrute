@@ -1,16 +1,17 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-SHARED = args wbuffer tpool client_thandlers wpermutation progress
+CLIENT = args wbuffer tpool client_thandlers wpermutation progress
+SERVER = args tpool wdictionary wsolver
 
 all: client server
 client: directories binary_client
 server: directories binary_server
 test: directories binary_test
 
-binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
+binary_client: $(patsubst %,build/%.o,$(CLIENT)) build/client.o
 	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lm -lrt
 
-binary_server: $(patsubst %,build/%.o,$(SHARED)) build/server.o
+binary_server: $(patsubst %,build/%.o,$(SERVER)) build/server.o
 	$(CC) $(CFLAGS) -o server $^ -lcrypt -pthread -lm -lrt
 
 binary_test: build/test.o
@@ -32,7 +33,7 @@ runclient_great: client
 	./client \$$1\$$9779ofJE\$$MKAskbSv72cuWHNmBHTwX.
 
 runserver: server
-	./server
+	./server -l 1 -d misc/dictionary.txt \$$1\$$RvQQ2SJN\$$Q80Nh4Ello9cx9Wllf5Nx/
 
 runtest: test
 	./test

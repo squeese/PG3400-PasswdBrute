@@ -1,4 +1,4 @@
-#define _GNU_SOURCE 1
+// #define _GNU_SOURCE 1
 // #include "wpermutation.h"
 // #include "args.h"
 // #include "tpool.h"
@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <crypt.h>
+// #include <crypt.h>
 #include <pthread.h>
 #include <mqueue.h>
           
@@ -24,35 +24,51 @@ void cleanupfn(void* arg) {
 }
 */
 
+static pthread_t a, b;
+
+void cleanupfn(void* arg) {
+  free(arg);
+  printf("A's cleanup\n");
+}
+
 void* syncfn(void* arg) {
-  printf("%s thread\n", (char*) arg);
-  sleep(1);
-  printf("%s exiting\n", (char*) arg);
-  pthread_exit(arg);
+  // pthread_mutex_t* t = arg;
+
+  if (arg != NULL) {
+    int* n = malloc(sizeof(int));
+    pthread_cleanup_push(&cleanupfn, n);
+    printf("A sleeping with cleanup fn loaded\n");
+    sleep(2);
+    pthread_cleanup_pop(0);
+  }
+  pthread_exit(0);
+}
+
+void* cancelfn(void *arg) {
+  pthread_mutex_t* t = arg;
+  printf("B aquire lock, I should wait 2 seconds\n");
+  pthread_mutex_lock(t);
+  printf("B cancel A\n");
+  pthread_cancel(a);
+  printf("B cancelled A\n");
+  pthread_mutex_unlock(t);
+  pthread_exit(0);
 }
 
 int main() {
   /*
   pthread_mutex_init(&lock, NULL);
   pthread_cond_init(&condition, NULL);
-
   */
-  pthread_t a;
-  pthread_create(&a, NULL, &syncfn, "a");
-  pthread_t b;
-  pthread_create(&b, NULL, &syncfn, "b");
+  pthread_mutex_t t;
+  pthread_mutex_init(&t, NULL);
 
-  printf("join a\n");
-  pthread_join(a, NULL);
-  printf("after a\n");
-
+  pthread_create(&a, NULL, &syncfn, &t);
   sleep(1);
-  printf("join b\n");
-  pthread_join(b, NULL);
-  printf("after b\n");
-
-
-
+  pthread_cancel(a);
+  sleep(2);
+  // pthread_create(&b, NULL, &cancelfn, &t);
+  // pthread_join(b, NULL);
   /*
   sleep(1);
   printf("main broadcast\n");
