@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <unistd.h>
 
-void progress_init(struct progress* prog) {
+void progress_init(struct progress* prog, long max) {
   memset(prog, 0, sizeof(struct progress));
   prog->time_started = time(NULL);
   prog->val = 0;
-  prog->max = 0;
+  prog->max = max;
   prog->title = prog->buffer + 32;
   for (int i = 0; i < 96; i++) *(prog->buffer + i) = ' ';
 }

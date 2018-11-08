@@ -1,6 +1,9 @@
 #ifndef BC_THREAD_QUEUE_WORKERS_H
 #define BC_THREAD_QUEUE_WORKERS_H
+#include "args.h"
 #include "tqueue.h"
+
+extern struct args_client_config client_config;
 
 enum {
   TQMESSAGE_PUSH          = (1 << 0),

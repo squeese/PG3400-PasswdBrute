@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O3 -g -Wno-comment
-SHARED = args tqueue wdictionary wcombinator tqueue tqueue_workers progress
+SHARED = args tqueue wcombinator tqueue tqueue_workers progress vmap
 
 all: client
 client: directories binary_client

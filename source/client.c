@@ -2,11 +2,18 @@
 #include "tqueue.h"
 #include "tqueue_workers.h"
 #include "progress.h"
+#include "vmap.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
+#include <mqueue.h>
+#include <time.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <math.h>
 
 struct args_client_config client_config;
 
@@ -40,6 +47,7 @@ int main(int argc, char** args) {
   // A simple terminal widget to help visualize progress on the current task
   // It gives a rough estimate, not accurate =)
   struct progress prog;
+  struct vmap vmap;
   char* password = NULL;
   // When exiting the application (we found a password) and there is still messages
   // queued, and/or threads are currently working, the main thread cant quit until
@@ -48,6 +56,7 @@ int main(int argc, char** args) {
   int threads_active = 0;
   int index_dictionary = 0;
   int index_combiner = client_config.word_length_min;
+  int SHITPENDINGWTF = 0;
 
   // This is the 'controller'.
   // The threads spawned above send messages to the tqueue channel 'controller' with
@@ -71,53 +80,57 @@ int main(int argc, char** args) {
     }
 
     if (TQMESSAGE_NEXT == msg.flag) {
-      // Signal that is issue when a word producing thread is needed.
-      // First in priority for searching for password is a dictionary file.
-      // Spawn one for each -d <pathname> flag used when running application
+
       if (index_dictionary < client_config.dictionary_count) {
+        // First in priority for searching for password is a dictionary file.
+        // Spawn one for each -d <pathname> flag used when running application
         char* path = *(client_config.dictionary_paths + index_dictionary++);
-        // Reset the progress indicator to show the dictionary
-        progress_init(&prog);
+        vmap_load_file(&vmap, path);
+        progress_init(&prog, vmap.size);
         progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
-        // Issue a message to the threads to spawn a wdictionary_worker
-        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, path, 0, 1);
+        SHITPENDINGWTF = 0;
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, &vmap, 0, 1);
 
-      // Next up is a word combiner to generate words
-      // We must spawn a wcombiner_worker for each length of word user wants to try
-      // Users can use either -l <num> to indicate length of word to search for
-      // or -L <n-m> which indicates a range from N to M, eks: -L 1-3
       } else if (index_combiner <= client_config.word_length_max) {
-        // Reset the progress indicator to show the dictionary
-        progress_init(&prog);
-        progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %d", index_combiner, client_config.input_length, 0));
-        // Issue a message to the threads to spawn a wcombiner_worker
-        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
+        // Next up is a word combiner to generate words
+        // We must spawn a wcombiner_worker for each length of word user wants to try
+        // Users can use either -l <num> to indicate length of word to search for
+        // or -L <n-m> which indicates a range from N to M, eks: -L 1-3
+        // progress_init(&prog);
+        // progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %d", index_combiner, client_config.input_length, 0));
+        // tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
 
-      // No more workers to start that will produce words to test against
-      // Issue a signal to begin closing down the threads and exit
       } else {
+        // No more workers to start that will produce words to test against
+        // Issue a signal to begin closing down the threads and exit
         tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_CLOSE), NULL, 0, 1);
       }
       continue;
     }
 
     if ((TQMESSAGE_WDICTIONARY | TQMESSAGE_WCOMBINATOR) & msg.flag) {
-      // wdictionary_worker or wcombinator_worker has sent a message that it's started processing.
-      // msg.arg contains the 'approximate' length of all words it will be producing
-      if (msg.arg != NULL) {
-        prog.max = *(long*) msg.arg;
-        if (TQMESSAGE_WCOMBINATOR == msg.flag) {
-          // update the 'combinations' in the title of progress bar
-          progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
-        }
+      /*
+        // wdictionary_worker or wcombinator_worker has sent a message that it's started processing.
+        // msg.arg contains the 'approximate' length of all words it will be producing
+        if (msg.arg != NULL) {
+          prog.max = *(long*) msg.arg;
+          if (TQMESSAGE_WCOMBINATOR == msg.flag) {
+            // update the 'combinations' in the title of progress bar
+            progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
+          }
 
-      // Or when they are finished producing words
-      } else {
-        // This 'freezes' the progress indicator, since its really just guestimation on the
-        // progress, the numbers are really off. So its zeroed. Looks better.
-        progress_finish(&prog);
-        // Issue a message to queue another word generator worker
-        tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+        // Or when they are finished producing words
+        } else {
+          // This 'freezes' the progress indicator, since its really just guestimation on the
+          // progress, the numbers are really off. So its zeroed. Looks better.
+          progress_finish(&prog);
+          // Issue a message to queue another word generator worker
+          tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+        }
+      */
+      SHITPENDINGWTF += msg.argn;
+      if (SHITPENDINGWTF == 0) {
+        printf("task complete 1\n");
       }
       continue;
     }
@@ -125,6 +138,10 @@ int main(int argc, char** args) {
     if (TQMESSAGE_TEST_WORDS == msg.flag) {
       // worder_tester_worker has finished processing a batch of words, only thing
       // we do is update the progress indicator
+      SHITPENDINGWTF--;
+      if (SHITPENDINGWTF == 0) {
+        printf("task complete 2\n");
+      }
       progress_update(&prog, msg.argn);
       continue;
     }

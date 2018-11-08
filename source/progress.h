@@ -10,7 +10,7 @@ struct progress {
   long max;
 };
 
-void progress_init(struct progress*);
+void progress_init(struct progress*, long);
 void progress_title(struct progress*, int);
 void progress_finish(struct progress*);
 void progress_update(struct progress*, long);
