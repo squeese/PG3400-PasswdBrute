@@ -11,7 +11,7 @@ struct wcombinator {
   long solutions;
 };
 
-void wcomb_init(struct wcombinator*, int, char*, int, long*);
+long wcomb_init(struct wcombinator*, int, char*, int);
 void wcomb_update(struct wcombinator*, unsigned int);
 int wcomb_generate(struct wcombinator*, char*, unsigned int);
 void wcomb_free(struct wcombinator*);

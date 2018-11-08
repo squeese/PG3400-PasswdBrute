@@ -63,6 +63,11 @@ static void* tqueue_thread_routine(void* arg) {
   struct tqueue_message msg = { 0 };
   ctx->fn(ctx->queue_threads, ctx->queue_control, &msg);
   pthread_cleanup_pop(1);
+  // 1-2 hours in valgrind going nuts, turns out every 5-6'th run, this
+  // function will not free some memory this application have access to,
+  // or something, need to learn more. Good for me I didnt actually have
+  // to return any values from the threads. Good times.
+  // pthread_exit(0);
   return 0;
 }
 

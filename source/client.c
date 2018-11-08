@@ -100,11 +100,15 @@ int main(int argc, char** args) {
       continue;
     }
 
-    if (TQMESSAGE_WDICTIONARY == msg.flag) {
-      // wdictionary_worker has sent a message that it's started processing.
-      // msg.arg contains the 'approximate' length of all words in file.
+    if ((TQMESSAGE_WDICTIONARY | TQMESSAGE_WCOMBINATOR) & msg.flag) {
+      // wdictionary_worker or wcombinator_worker has sent a message that it's started processing
+      // msg.arg contains the 'approximate' length of all words it will be producing
       if (msg.arg != NULL) {
         prog.max = *(long*) msg.arg;
+        if (TQMESSAGE_WCOMBINATOR == msg.flag) {
+          // update the 'combinations' in the title of progress bar
+          progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
+        }
 
       // This time its a message it's done processing the dictionary file
       } else {
@@ -113,7 +117,6 @@ int main(int argc, char** args) {
         progress_finish(&prog);
         // Issue a message to queue another word generator worker
         tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
-        printf("\n");
       }
       continue;
     }
@@ -125,10 +128,6 @@ int main(int argc, char** args) {
       continue;
     }
 
-    if (TQMESSAGE_WCOMBINATOR == msg.flag) {
-      continue;
-    }
-    
     if (TQMESSAGE_PASSWORD == msg.flag) {
       // Good stuff, keep the password for later, and issue a message to begin
       // the process of closing down
@@ -196,18 +195,18 @@ int main(int argc, char** args) {
   while (tqueue_read(tq.queue_control, &msg) > 0);
   while (tqueue_read(tq.queue_threads, &msg) > 0) {
     if (TQMESSAGE_TEST_WORDS == msg.flag) {
-      struct test_words* words = (struct test_words*) msg.arg;
-      free(words->buffer);
-      free(words);
+      // buffer from wcombiner_worker and wdictionary_worker
+      free((char*) msg.arg);
     }
   }
 
+
   // Write to the console the result
   if (password != NULL) {
-    printf("> PASSWORD : %s\n", password);
+    printf("\n\n> PASSWORD : %s\n\n", password);
     free(password);
   } else {
-    printf("> PASSWORD : NO MATCH\n");
+    printf("\n\n> PASSWORD : NO MATCH\n\n");
   }
 
   // Cleanup

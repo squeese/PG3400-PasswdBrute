@@ -29,8 +29,7 @@ void progress_finish(struct progress* prog) {
   int len = write(1, prog->buffer, 96);
   // *note: is it actually possible to not be able to write specified
   // amount to stdout?
-  if (len != 96)
-    fprintf(stderr, "write wrote %d, instead of 96\n", len);
+  if (len != 96) fprintf(stderr, "write wrote %d, instead of 96\n", len);
 }
 
 void progress_update(struct progress* prog, long value) {
@@ -43,6 +42,5 @@ void progress_update(struct progress* prog, long value) {
     *(prog->buffer + 14 + i) = ((i / 20.0) > spv) ? '-' : 'O';
   }
   int len = write(1, prog->buffer, 96);
-  if (len != 96)
-    fprintf(stderr, "write wrote %d, instead of 96\n", len);
+  if (len != 96) fprintf(stderr, "write wrote %d, instead of 96\n", len);
 }

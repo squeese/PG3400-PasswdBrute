@@ -23,7 +23,7 @@
 	word length, input length and an 'offset index'.
 */
 
-void wcomb_init(struct wcombinator* wc, int word_size, char* inputs, int input_size, long* total) {
+long wcomb_init(struct wcombinator* wc, int word_size, char* inputs, int input_size) {
   wc->word_size = word_size;
 	wc->inputs = inputs;
 	wc->input_size = input_size;
@@ -31,9 +31,7 @@ void wcomb_init(struct wcombinator* wc, int word_size, char* inputs, int input_s
 	wc->y = calloc(word_size, sizeof(int));
   wc->x = 0;
 	wc->solutions = (long) pow((double) wc->input_size, (double) word_size);
-	if (total != NULL) {
-  	*total = wc->solutions * (word_size + 1);
-	}
+ 	return (long) wc->solutions * (word_size + 1);
 }
 
 void wcomb_update(struct wcombinator* wc, unsigned int offset) {

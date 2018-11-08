@@ -1,6 +1,7 @@
 #define _GNU_SOURCE 1
 #include "tqueue_workers.h"
 #include "wdictionary.h"
+#include "wcombinator.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -54,14 +55,14 @@ void tqueue_worker_root(mqd_t threads, mqd_t control, struct tqueue_message* msg
     if (TQMESSAGE_WCOMBINATOR == msg->flag) {
       // a worker who will generate words of given N length, and queue a
       // message to try match any of the words.. etc
-      // tqueue_worker_wcombinator(threads, control, msg);
-      // tqueue_send(control, msg, TQMESSAGE_WCOMBINATOR, NULL, 1);
+      tqueue_worker_wcombinator(threads, control, msg);
       continue;
     }
 
     if (TQMESSAGE_CLOSE == msg->flag) {
-      if (--msg->argn > 0)
+      if (--msg->argn > 0) {
         tqueue_send(threads, msg, TQMESSAGE_CLOSE, NULL, msg->argn, 0);
+      }
       break;
     }
 
@@ -79,25 +80,23 @@ void tqueue_worker_word_tester(mqd_t threads, mqd_t control, struct tqueue_messa
   // char* crypt_result;
   struct crypt_data crypt_data;
 	crypt_data.initialized = 0;
-  int length;
   do {
     if (TQMESSAGE_TEST_WORDS != msg->flag) break;
-    // We now take the responsebility to free the allocated memory in the message
-    // in this case its the test_word struct and a char* buffer
+    // We now take the responsebility to free the allocated memory in the message,
+    // in this case its the char* buffer
     pthread_cleanup_push(tqueue_worker_word_tester_cleanup, msg->arg);
-    struct test_words* words = msg->arg;
-    length = words->length;
-    for (int i = 0; i < words->length; i += 1 + strlen(words->buffer + i)) {
-      char* crypt_result = crypt_r(words->buffer + i, client_config.salt, &crypt_data);
+    char* buffer = (char*) msg->arg;
+    for (int i = 0; i < msg->argn; i += 1 + strlen(buffer + i)) {
+      char* crypt_result = crypt_r(buffer + i, client_config.salt, &crypt_data);
       if (strncmp(crypt_result, client_config.hash, 34) == 0) {
         // now... in theory it's shouldnt be needed to block cancel of
         // the thread, since we only cancel threads when we found a password, and
         // this is that message, is it impossible for two threads to find a password
         // at the same time? Well, lets be safe eh? its graded.
         pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-        int password_length = strlen(words->buffer + i);
+        int password_length = strlen(buffer + i);
         char* password = calloc(password_length + 1, sizeof(char));
-        memcpy(password, words->buffer + i, password_length);
+        memcpy(password, buffer + i, password_length);
         tqueue_send(control, msg, TQMESSAGE_PASSWORD, password, 0, 5);
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         pthread_testcancel();
@@ -109,14 +108,12 @@ void tqueue_worker_word_tester(mqd_t threads, mqd_t control, struct tqueue_messa
     pthread_cleanup_pop(1);
     // Send a message with the total length of words processed to main, so it
     // cant update the progress indicator in terminal output
-    tqueue_send(control, msg, TQMESSAGE_TEST_WORDS, NULL, length, 5);
+    tqueue_send(control, msg, TQMESSAGE_TEST_WORDS, NULL, msg->argn, 5);
   } while (tqueue_read(threads, msg));
 }
 
 void tqueue_worker_word_tester_cleanup(void* arg) {
-  struct test_words* words = arg;
-  free(words->buffer);
-  free(words);
+  free((char*) arg); // buffer
 }
 
 /*
@@ -150,10 +147,7 @@ void tqueue_worker_wdictionary(mqd_t threads, mqd_t control, struct tqueue_messa
     char* buffer = malloc(client_config.thread_buffer_size * sizeof(char));
     int length = wdictionary_fill(&wdict, buffer, client_config.thread_buffer_size);
     if (length > 0) {
-      struct test_words* words = malloc(sizeof(struct test_words));
-      words->buffer = buffer;
-      words->length = length;
-      tqueue_send(threads, msg, TQMESSAGE_TEST_WORDS, words, 0, 1);
+      tqueue_send(threads, msg, TQMESSAGE_TEST_WORDS, buffer, length, 1);
       pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
       pthread_testcancel();
       continue;
@@ -164,45 +158,55 @@ void tqueue_worker_wdictionary(mqd_t threads, mqd_t control, struct tqueue_messa
     pthread_testcancel();
     break;
   } while(1);
+  pthread_cleanup_pop(1);
   // Send a message to the control that the dictionary is done, control
   // will issue a new message appropriately to read anoter file, or try
   // generating words based on used input
   // Pass NULL instead of a long* as earlier, indicating we are with
   // with this dictionary
   tqueue_send(control, msg, TQMESSAGE_WDICTIONARY, NULL, 0, 1);
-  pthread_cleanup_pop(1);
 }
 
 void tqueue_worker_wdictionary_cleanup(void* arg) {
   wdictionary_free((struct wdictionary*) arg);
 }
 
-void tqueue_worker_flush(mqd_t threads, mqd_t control, struct tqueue_message* msg) {
+void tqueue_worker_wcombinator(mqd_t threads, mqd_t control, struct tqueue_message* msg) {
   (void)(control);
-  struct timespec tm;
-  clock_gettime(CLOCK_REALTIME, &tm);
-  tm.tv_nsec += 100000;
-  while (mq_timedreceive(threads, (char*) msg, sizeof(struct tqueue_message), NULL, &tm)) {
-    if (TQMESSAGE_TEST_WORDS == msg->flag) {
-      tqueue_worker_word_tester_cleanup(msg->arg);
-      break;
+  struct wcombinator wcomb;
+  long num_combinations = wcomb_init(&wcomb, msg->argn, client_config.input_buffer, client_config.input_length);
+  pthread_cleanup_push(&tqueue_worker_wcombinator_cleanup, &wcomb);
+  // Send a message to the control with the total length (sum) of all words that will
+  // be generated, will be used to update the progress indicator
+  tqueue_send(control, msg, TQMESSAGE_WCOMBINATOR, &num_combinations, 0, 1);
+  // need to know how many words we can fit into the given buffer size
+  // wcombinator's generate is based on how many words you want generated,
+  // dont see the need to refactor it to conform to wdictionary_fill, that will
+  // just generate words, until the given buffer is full
+  int word_count = client_config.thread_buffer_size / (sizeof(char) * (wcomb.word_size + 1));
+  int buffer_size = client_config.thread_buffer_size * sizeof(char);
+  while (1) {
+    // Blocking the pthread_cancel calls untils we can release the responsebility
+    // to deallocate the buffer, or deallocate it ourselfs
+    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    char* buffer = malloc(buffer_size);
+    int length;
+    if ((length = wcomb_generate(&wcomb, buffer, word_count)) > 0) {
+      tqueue_send(threads, msg, TQMESSAGE_TEST_WORDS, buffer, length, 1);
+      pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+      pthread_testcancel();
+      continue;
     }
-    if (TQMESSAGE_WDICTIONARY == msg->flag) continue;
-    if (TQMESSAGE_WCOMBINATOR == msg->flag) continue;
+    free(buffer);
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_testcancel();
     break;
   }
+  pthread_cleanup_pop(1);
+  // Send a message to the control that were done
+  tqueue_send(control, msg, TQMESSAGE_WCOMBINATOR, NULL, 0, 1);
 }
 
-void tqueue_worker_close(mqd_t threads, mqd_t control, struct tqueue_message* msg) {
-  (void)(control);
-  struct mq_attr attr;
-  while (1) {
-    mq_getattr(threads, &attr);
-    if (attr.mq_curmsgs == 0) {
-      for (int i = 0; i < client_config.thread_count; i++)
-        tqueue_send(threads, msg, TQMESSAGE_CLOSE, NULL, i, 0);
-      break;
-    }
-    usleep(10000);
-  }
+void tqueue_worker_wcombinator_cleanup(void* arg) {
+  wcomb_free((struct wcombinator*) arg);
 }
