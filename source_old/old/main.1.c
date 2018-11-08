@@ -22,20 +22,20 @@ int main(int argc, char **argv) {
 
 	// create thread pool
 	struct tpool tp;
-	tpool_init(&tp, 8);
+	tqueue_init(&tp, 8);
 
 	// load the password dictionary
 	int error;
 	struct wdictionary wd;
 	if ((error = wdict_init(&wd, 32, dict_path)) != EXIT_SUCCESS) {
 		wdict_free(&wd);
-		tpool_free(&tp);
+		tqueue_free(&tp);
 		return error;
 	}
 
 	// try to solve the hash with a dictionary
 	struct dict_solver_state dss = { &wd, PTHREAD_MUTEX_INITIALIZER, salt, hash, NULL };
-	if ((password = tpool_run_solver(&tp, dict_solver_fn, &dss)) != NULL) {
+	if ((password = tqueue_run_solver(&tp, dict_solver_fn, &dss)) != NULL) {
 		printf("Dictionary -> Found password: %s\n", password);
 	} 
   pthread_mutex_destroy(&dss.lock);
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 	const int LENGTH = 4;
 	const int STRIDE = 128;
 	struct perm_solver_state pss = { LENGTH, 0, PTHREAD_MUTEX_INITIALIZER, salt, hash, NULL };
-	if ((password = tpool_run_solver(&tp, perm_solver_fn, &pss)) != NULL) {
+	if ((password = tqueue_run_solver(&tp, perm_solver_fn, &pss)) != NULL) {
 		printf("Permutation -> Found password: %s\n", password);
 	} 
   pthread_mutex_destroy(&pss.lock);

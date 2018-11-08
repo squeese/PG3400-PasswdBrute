@@ -12,14 +12,14 @@
 #include <unistd.h>
 
 void* thread_worker_local_encrypt(void* arg) {
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   struct crypt_data crypt;
 	crypt.initialized = 0;
   char* encoded;
-  while (tpool_queue_read(queue.signal_in, &tsignal)) {
+  while (tqueue_queue_read(queue.signal_in, &tsignal)) {
     if (SIGNAL_WORKLOAD_START == tsignal.flag) {
-      struct tpool_work* twork = tsignal.arg;
+      struct tqueue_work* twork = tsignal.arg;
       for (int i = 0; i < twork->length; ) {
         encoded = crypt_r(twork->buffer + i, twork->salt, &crypt);
         if (strncmp(encoded, twork->hash, 34) == 0) {
@@ -30,14 +30,14 @@ void* thread_worker_local_encrypt(void* arg) {
       }
       tsignal.flag = SIGNAL_WORKLOAD_COMPLETED;
       tsignal.arg = twork;
-      tpool_queue_send(queue.signal_out, &tsignal, 2);
+      tqueue_queue_send(queue.signal_out, &tsignal, 2);
       continue;
     }
     if (SIGNAL_WORKER_EXIT == tsignal.flag) {
       // printf("thread(%d) exit.\n", id);
       tsignal.flag = SIGNAL_WORKER_EXIT;
       tsignal.arg = NULL;
-      tpool_queue_send(queue.signal_out, &tsignal, 1);
+      tqueue_queue_send(queue.signal_out, &tsignal, 1);
       break;
     }
   }
@@ -51,15 +51,15 @@ static void dictionary_provider_cleanup(void* arg) {
   if (*tct->buffer != NULL) {
     free(*tct->buffer);
   }
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   tsignal.flag = SIGNAL_DICTIONARY_COMPLETED;
-  tpool_queue_send(queue.signal_out, &tsignal, 1);
+  tqueue_queue_send(queue.signal_out, &tsignal, 1);
 }
 
 void* thread_words_from_dictionary_provider(void* arg) {
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   char* buffer = NULL;
   struct wbuffer* wbuf = arg;
   struct thread_cleanup_t tct = { &buffer, wbuf };
@@ -68,7 +68,7 @@ void* thread_words_from_dictionary_provider(void* arg) {
     buffer = malloc(client_config.thread_buffer_size * sizeof(char));
     int length;
     if ((length = wbuffer_fill(wbuf, buffer, client_config.thread_buffer_size)) > 0) {
-      struct tpool_work* twork = malloc(sizeof(struct tpool_work));
+      struct tqueue_work* twork = malloc(sizeof(struct tqueue_work));
       // printf("MALLOC %p\n", twork);
       twork->salt = client_config.salt;
       twork->hash = client_config.hash;
@@ -78,7 +78,7 @@ void* thread_words_from_dictionary_provider(void* arg) {
       twork->pass = NULL;
       tsignal.flag = SIGNAL_WORKLOAD_START;
       tsignal.arg = twork;
-      tpool_queue_send(queue.signal_in, &tsignal, 1);
+      tqueue_queue_send(queue.signal_in, &tsignal, 1);
       // progress_add_max(&prog, length);
       continue;
     }
@@ -96,15 +96,15 @@ static void permutation_provider_cleanup(void* arg) {
     // printf("FREE BUFFER %p\n", *tct->buffer);
     free(*tct->buffer);
   }
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   tsignal.flag = SIGNAL_PERMUTATION_COMPLETED;
-  tpool_queue_send(queue.signal_out, &tsignal, 1);
+  tqueue_queue_send(queue.signal_out, &tsignal, 1);
 }
 
 void* thread_words_from_permutation_provider(void* arg) {
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   char* buffer = NULL;
   struct wpermutation* wperm = arg;
   struct thread_cleanup_t tct = { &buffer, wperm };
@@ -114,7 +114,7 @@ void* thread_words_from_permutation_provider(void* arg) {
     int count = client_config.thread_buffer_size / (sizeof(char) * (wperm->word_size + 1));
     int length;
     if ((length = wperm_generate(wperm, buffer, count)) > 0) {
-      struct tpool_work* twork = malloc(sizeof(struct tpool_work));
+      struct tqueue_work* twork = malloc(sizeof(struct tqueue_work));
       twork->salt = client_config.salt;
       twork->hash = client_config.hash;
       twork->buffer = buffer;
@@ -123,7 +123,7 @@ void* thread_words_from_permutation_provider(void* arg) {
       twork->pass = NULL;
       tsignal.flag = SIGNAL_WORKLOAD_START;
       tsignal.arg = twork;
-      tpool_queue_send(queue.signal_in, &tsignal, 1);
+      tqueue_queue_send(queue.signal_in, &tsignal, 1);
       continue;
     }
     break;
@@ -134,11 +134,11 @@ void* thread_words_from_permutation_provider(void* arg) {
 }
 
 void* thread_issue_close_signal(void* arg) {
-  struct tpool_signal tsignal;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
+  struct tqueue_signal tsignal;
+  memset(&tsignal, 0, sizeof(struct tqueue_signal));
   tsignal.flag = SIGNAL_WORKER_EXIT;
   for (int i = *(int*) arg; i > 0; i--) {
-    tpool_queue_send(queue.signal_in, &tsignal, 1);
+    tqueue_queue_send(queue.signal_in, &tsignal, 1);
   }
   pthread_exit(0);
 }

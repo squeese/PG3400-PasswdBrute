@@ -9,21 +9,9 @@
   separated by \0 terminator. That way you can iterate over the buffer
   very compactly, and provide the crack_r() function with a pointer to
   each words beginning.
-
-  The only visible function from here is the wdictionary_worker. It's
-  being assigned to a tpool (phtread) thread to provide other workers
-  (threads) with data.
-
-  It will create a buffer of fixed size (can be changed via terminal args)
-  and put them on a messaging queue (mqueue), where other threads can pick
-  them off the queue and process them.
-
-  The buffer is allocated on the heap, so when the 'message' with the buffer
-  has been sent, wdictionary_worker is no longer responsible to dealloc it,
-  its the responsebility of the other threads picking the message up.
 */
 
-static int wdictionary_init(struct wdictionary *wdict, char* path, long* size) {
+int wdictionary_init(struct wdictionary *wdict, char* path, long* size) {
   wdict->buffer = wdict->stack;
   wdict->index = 0;
   wdict->size = WDICTIONARY_INITIAL_BUFFER_SIZE;
@@ -78,7 +66,7 @@ static int wdictionary_read(struct wdictionary* wdict) {
   return wdict->index;
 }
 
-static int wdictionary_fill(struct wdictionary* wdict, char* buffer, int cap) {
+int wdictionary_fill(struct wdictionary* wdict, char* buffer, int cap) {
   static int length = 0;
   int offset = 0;
   if (length) fill(wdict->buffer, buffer, &offset, length, cap);
@@ -87,35 +75,8 @@ static int wdictionary_fill(struct wdictionary* wdict, char* buffer, int cap) {
   return offset;
 }
 
-static void wdictionary_cleanup(void* arg) {
-  struct wdictionary* wdict = arg;
+void wdictionary_free(struct wdictionary* wdict) {
   fclose(wdict->fd);
   if (wdict->buffer != wdict->stack)
     free(wdict->buffer);
-}
-
-int wdictionary_thread_worker(struct tpool* tp, struct tpool_message* msg, pthread_mutex_t* lock) {
-  struct wdictionary wdict;
-  if (wdictionary_init(&wdict, (char*)msg->arg, NULL) != 0) {
-    printf("wtf \n");
-  }
-  pthread_cleanup_push(&wdictionary_cleanup, &wdict);
-  do {
-    pthread_mutex_lock(lock);
-    char* buffer = malloc(client_config.thread_buffer_size * sizeof(char));
-    int length;
-    if ((length = wdictionary_fill(&wdict, buffer, client_config.thread_buffer_size)) > 0) {
-      struct tmp_work* twork = malloc(sizeof(struct tmp_work));
-      twork->buffer = buffer;
-      twork->length = length;
-      tpool_send(tp->queue_threads, msg, TPOOL_WSOLVER_WORK, twork, 1);
-      pthread_mutex_unlock(lock);
-      continue;
-    }
-    free(buffer);
-    pthread_mutex_unlock(lock);
-    break;
-  } while(1);
-  pthread_cleanup_pop(1);
-  return 0;
 }

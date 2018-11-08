@@ -4,7 +4,6 @@
 
 struct progress {
   time_t time_started;
-  // time_t time_estimate;
   char buffer[96];
   char* title;
   long val;

@@ -1,21 +1,16 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O0 -g -Wno-unused-parameter
-CLIENT = args wbuffer tpool client_thandlers wpermutation progress
-SERVER = args tpool wdictionary wsolver
+CFLAGS = -Wall -Wextra -O3 -g -Wno-comment
+SHARED = args tqueue wdictionary wcombinator tqueue tqueue_workers progress
 
-all: client server
+all: client
 client: directories binary_client
-server: directories binary_server
 test: directories binary_test
 
-binary_client: $(patsubst %,build/%.o,$(CLIENT)) build/client.o
-	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lm -lrt
+binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
+	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lrt -lm
 
-binary_server: $(patsubst %,build/%.o,$(SERVER)) build/server.o
-	$(CC) $(CFLAGS) -o server $^ -lcrypt -pthread -lm -lrt
-
-binary_test: build/test.o
-	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lm -lrt
+binary_test:  $(patsubst %,build/%.o,$(SHARED)) build/test.o
+	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lrt -lm
 
 build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -26,17 +21,8 @@ directories:
 clean:
 	rm -rf client server test build/*.o
 
-runclient: client
-	./client -l 2 \$$1\$$9779ofJE\$$c.p.EwsI57yV2xjeorQbs1
+development: client
+	./development.sh
 
-runclient_great: client
-	./client \$$1\$$9779ofJE\$$MKAskbSv72cuWHNmBHTwX.
-
-runserver: server
-	./server -l 1 -d misc/dictionary.txt \$$1\$$RvQQ2SJN\$$Q80Nh4Ello9cx9Wllf5Nx/
-
-runtest: test
+test: binary_test
 	./test
-
-runshell: client
-	./cron.sh

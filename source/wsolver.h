@@ -12,6 +12,6 @@ struct wsolver_work {
   char* pass;
 };
 
-int wsolver_thread_worker(struct tpool*, struct tpool_message*, pthread_mutex_t*);
+int wsolver_thread_worker(struct tpool*, struct tqueue_message*, pthread_mutex_t*);
 
 #endif

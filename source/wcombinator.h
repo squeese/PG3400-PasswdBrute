@@ -1,7 +1,7 @@
-#ifndef BC_WPERMUTATION_H
-#define BC_WPERMUTATION_H
+#ifndef BC_WORD_COMBINATOR_H
+#define BC_WORD_COMBINATOR_H
 
-struct wpermutation {
+struct wcombinator {
   char* inputs;
   int word_size;     // length of the word to generate
   int input_size;    // how many characters one can choose from when making a work
@@ -11,9 +11,9 @@ struct wpermutation {
   long solutions;
 };
 
-void wperm_init(struct wpermutation*, int, char*, int, long*);
-void wperm_update(struct wpermutation*, unsigned int);
-int wperm_generate(struct wpermutation*, char*, unsigned int);
-void wperm_free(struct wpermutation*);
+void wcomb_init(struct wcombinator*, int, char*, int, long*);
+void wcomb_update(struct wcombinator*, unsigned int);
+int wcomb_generate(struct wcombinator*, char*, unsigned int);
+void wcomb_free(struct wcombinator*);
 
 #endif

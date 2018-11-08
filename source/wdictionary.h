@@ -1,9 +1,7 @@
 #ifndef BC_WORD_DICTIONARY_H
 #define BC_WORD_DICTIONARY_H
 #include "args.h"
-#include "tpool.h"
 #include <stdio.h>
-#include <pthread.h>
 
 extern struct args_client_config client_config;
 
@@ -20,6 +18,8 @@ struct wdictionary {
   int size;
 };
 
-int wdictionary_thread_worker(struct tpool*, struct tpool_message*, pthread_mutex_t*);
+int wdictionary_init(struct wdictionary *wdict, char* path, long* size);
+int wdictionary_fill(struct wdictionary* wdict, char* buffer, int cap);
+void wdictionary_free(struct wdictionary* wdict);
 
 #endif

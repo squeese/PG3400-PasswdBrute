@@ -7,7 +7,7 @@
 #include <crypt.h>
 #include <pthread.h>
 
-int wsolver_thread_worker(struct tpool* tp, struct tpool_message* msg, pthread_mutex_t* lock) {
+int wsolver_thread_worker(struct tpool* tp, struct tqueue_message* msg, pthread_mutex_t* lock) {
   pthread_mutex_lock(lock);
   char* md5hash;
   struct crypt_data crypt;
@@ -21,8 +21,8 @@ int wsolver_thread_worker(struct tpool* tp, struct tpool_message* msg, pthread_m
         break;
       }
     }
-    tpool_send(tp->queue_control, msg, TPOOL_WSOLVER_WORK, msg->arg, 2);
-  } while (tpool_read(tp->queue_threads, msg) == TPOOL_WSOLVER_WORK);
+    tqueue_send(tp->queue_control, msg, tqueue_WSOLVER_WORK, msg->arg, 2);
+  } while (tqueue_read(tp->queue_threads, msg) == tqueue_WSOLVER_WORK);
   pthread_mutex_unlock(lock);
   return 0;
 }

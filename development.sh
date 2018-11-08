@@ -1,9 +1,10 @@
 #!/bin/bash
 # clear
-ARGS="-t 12 -b 1024"
+ARGS="-t 2 -b 1024"
 H1="\$1\$9779ofJE\$c.p.EwsI57yV2xjeorQbs1"                                 # 'Hi' permutation
 # ./client $ARGS $H1 -l 2 -I a-z -I A-Z                                    # success
-// ./client $ARGS $H1 -s 192.168.1.1:3000 -s :2000 -s /tmp/someplace -l 1 -i a
+
+# ./client $ARGS $H1 -s 192.168.1.1:3000 -s :2000 -s /tmp/someplace -l 1 -i a
 
 H2="\$1\$7tBjugEa\$h3cZLWYTXCwqikbFvQe7A/"                                 # 'Great' dictionary
 # ./client $ARGS $H2 -d misc/dictionary.txt                                # success
@@ -24,10 +25,14 @@ H3="\$1\$ivGZShhu\$L/NLEkmbLWOSUTOm3cnmO/"                                 # ???
 # ./client $ARGS $H3 -d misc/words.txt -l 1                                # failure
 
 H4="\$1\$K4BfHkEl\$A1mF1S2ztQ7reX7GzWj7v0"                                 # 'How' permutation
-./client $ARGS $H4 -l 3 -I a-z -I A-Z                                    # success
+# ./client $ARGS $H4 -l 3 -I a-z -I A-Z                                    # success
 
 H5="\$1\$RvQQ2SJN\$Q80Nh4Ello9cx9Wllf5Nx/"                                 # 'about' dictionary
 # ./client $ARGS $H5 -d misc/dictionary.txt                                # success
+
+XX="\$1\$RvQQ2SJN\$Q80Nh4Ello9cx9Wllf5Nx/"                                 # 'about' dictionary
+./client $ARGS $XX -d misc/small.txt
+#./client $ARGS $XX -d misc/small.txt -d misc/dictionary.txt
 
 H6="\$1\$CPqVGNrg\$YH26ye4.Cft6c9AWf0zUn1"                                 # 'something' dictionary
 # ./client $ARGS $H6 -d misc/dictionary.txt                                # success

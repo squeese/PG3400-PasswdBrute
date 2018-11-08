@@ -1,8 +1,6 @@
 #include "args.h"
-#include "client_thandlers.h"
-#include "tpool.h"
-#include "wbuffer.h"
-#include "wpermutation.h"
+#include "tqueue.h"
+#include "tqueue_workers.h"
 #include "progress.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,142 +9,216 @@
 #include <errno.h>
 
 struct args_client_config client_config;
-struct tpool_queue queue;
 
 int main(int argc, char** args) {
-  // Create config with input arguments
+  // Process the arguments and create a config
   if (args_client_init(&client_config, argc, args) != 0) {
     args_client_free(&client_config);
     return EXIT_FAILURE;
   }
 
-  printf("> HASH    : %s\n", client_config.hash);
-  printf("> INPUTS  : length:%d, %s\n", client_config.input_length, client_config.input_buffer);
-  printf("> LENGTH  : start:%d, end:%d\n", client_config.word_length_min, client_config.word_length_max);
-  printf("> THREAD  : count:%d, size:%d\n", client_config.thread_count, client_config.thread_buffer_size);
+  // Dump the current configs passed to the console
+  printf("> HASH     : %s\n", client_config.hash);
+  printf("> INPUTS   : length:%d, %s\n", client_config.input_length, client_config.input_buffer);
+  printf("> LENGTH   : start:%d, end:%d\n", client_config.word_length_min, client_config.word_length_max);
+  printf("> THREAD   : count:%d, size:%d\n", client_config.thread_count, client_config.thread_buffer_size);
 
-  // Thread pool stuffses
-  if (tpool_queue_init(&queue) != 0) {
+  // Create and initialize a tqueue instance
+  struct tqueue tq;
+  if (tqueue_init(&tq) != 0) {
     args_client_free(&client_config);
-    tpool_queue_free(&queue);
     return EXIT_FAILURE;
   }
 
-  int dictionary_index = 0;
-  int combinator_index = client_config.word_length_min;
-  int running_workers = 0;
-  char* password = NULL;
-  struct tpool tp;
+  // Spawn pthreads with the default tqueue_thread_worker
+  // We use tqueue to spawn the instances, but we get the pthread_t instance
+  // in return, we keep those, so we can cancel the threads if we find a password
+  pthread_t* worker_threads = malloc(client_config.thread_count * sizeof(pthread_t));
+  for (int i = 0; i < client_config.thread_count; i++)
+    tqueue_run(&tq, worker_threads + i, &tqueue_worker_root);
+
+  // A simple terminal widget to help visualize progress on the current task
+  // It gives a rough estimate, not accurate =)
   struct progress prog;
-  struct tpool_signal tsignal;
-  struct wbuffer wb;
-  struct wpermutation wperm;
-  memset(&tsignal, 0, sizeof(struct tpool_signal));
-  tpool_init(&tp, client_config.thread_count);
-  for (int i = 0; i < tp.num_workers; i++)
-    pthread_create(tp.workers + i, NULL, &thread_worker_local_encrypt, NULL);
-  running_workers = client_config.thread_count;
-  tsignal.flag = SIGNAL_PROVIDER_START;
-  tpool_queue_send(queue.signal_out, &tsignal, 2);
+  char* password = NULL;
+  // When exiting the application (we found a password) and there is still messages
+  // queued, and/or threads are currently working, the main thread cant quit until
+  // all threads have completed their jobs, and deallocated resources they are using
+  // So, when threads are done, they send a message, we keep track of that.
+  int threads_active = 0;
+  int index_dictionary = 0;
+  int index_combiner = client_config.word_length_min;
 
-  // Read signales from threads
-  while (tpool_queue_read(queue.signal_out, &tsignal)) {
+  // This is the 'controller'.
+  // The threads spawned above send messages to the tqueue channel 'controller' with
+  // results of their labor, read, process, send back more messages with instructions
+  // for more jobs, etc.
+  struct tqueue_message msg = { 0 };
+  while (tqueue_read(tq.queue_control, &msg)) {
 
-    if (SIGNAL_WORKLOAD_COMPLETED == tsignal.flag) {
-      struct tpool_work* twork = (struct tpool_work*) tsignal.arg;
-      if (twork->pass != NULL) {
-        int len = strlen(twork->pass);
-        password = malloc((len + 1) * sizeof(char));
-        memcpy(password, twork->pass, len);
-        *(password + len) = 0;
-        tpool_provider_close(&tp, &thread_words_from_dictionary_provider);
-        tpool_provider_close(&tp, &thread_words_from_permutation_provider);
+    if (TQMESSAGE_PUSH == msg.flag) {
+      if (threads_active++ == 0) {
+        // First thread worker has started, we can now issue a worker to start procude
+        // words to test agains the hash.
+        // The TQMESSAGE_RETURN sent to the treads queue, is indicating I want it sent back
+        // to this thread (main). This is because writing directly to the control queue,
+        // there is a good change to end up in deadlock, since the main thread is the only
+        // one reading from control
+        tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
       }
-      progress_update(&prog, twork->length);
-      free(twork->buffer);
-      free(twork);
       continue;
     }
 
-    if (SIGNAL_DICTIONARY_COMPLETED == tsignal.flag) {
-      dictionary_index++;
-      progress_finish(&prog);
-      // stop the dictionary thread
-      if (tpool_provider_close(&tp, &thread_words_from_dictionary_provider) == 0) {
-        // the provider was closed via pthread, that means we found a password
-        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
-        continue;
-      }
-    }
+    if (TQMESSAGE_NEXT == msg.flag) {
 
-    if (SIGNAL_PERMUTATION_COMPLETED == tsignal.flag) {
-      combinator_index++;
-      progress_finish(&prog);
-      if (tpool_provider_close(&tp, &thread_words_from_permutation_provider) == 0) {
-        // the provider was closed via phtread, that means we found a password
-        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
-        continue;
-      }
-    }
+      // First in priority for searching for password is a dictionary file, we will create
+      // a wdictionary_worker for each dictionary specified in the -d path.txt file
+      if (index_dictionary < client_config.dictionary_count) {
+        char* path = *(client_config.dictionary_paths + index_dictionary++);
+        // Reset the progress indicator to show the dictionary
+        progress_init(&prog);
+        progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
+        // Issue a message to the threads to spawn a wdictionary_worker
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, path, 0, 1);
 
-    if ((SIGNAL_PROVIDER_START | SIGNAL_DICTIONARY_COMPLETED | SIGNAL_PERMUTATION_COMPLETED) & tsignal.flag) {
-      if (dictionary_index < client_config.dictionary_count) {
+      // Next up is a word combiner to generate words
+      // We must spawn a wcombiner_worker for each length of word user wants to try
+      // So if specified to search for words up to 5 characters, we spawn 5 wcombinator_workers
+      // in sequence
+      } else if (index_combiner <= client_config.word_length_max) {
+        // Reset the progress indicator to show the dictionary
         progress_init(&prog);
-        // Spawn word dictionary provider
-        char* path = *(client_config.dictionary_paths + dictionary_index);
-        if (wbuffer_init(&wb, path, &prog.max) != 0) {
-          tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
-        } else {
-          progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
-          tpool_provider_create(&tp, &thread_words_from_dictionary_provider, &wb);
-        }
-      } else if (combinator_index <= client_config.word_length_max) {
-        progress_init(&prog);
-        wperm_init(&wperm, combinator_index, client_config.input_buffer, client_config.input_length, &prog.max);
-        progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %ld", combinator_index, client_config.input_length, wperm.solutions));
-        tpool_provider_create(&tp, &thread_words_from_permutation_provider, &wperm);
+        progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %d", index_combiner, client_config.input_length, 0));
+        // Issue a message to the threads to spawn a wcombiner_worker
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
+
+      // No more tasks that will generate words.
+      // Issue a signal to begin closing down the threads and exit
       } else {
-        tpool_provider_create(&tp, &thread_issue_close_signal, &client_config.thread_count);
+        tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_CLOSE), NULL, 0, 1);
       }
       continue;
     }
 
-    if (SIGNAL_WORKER_EXIT == tsignal.flag) {
-      if (--running_workers == 0) break;
+    if (TQMESSAGE_WDICTIONARY == msg.flag) {
+      // wdictionary_worker has sent a message that it's started processing.
+      // msg.arg contains the 'approximate' length of all words in file.
+      if (msg.arg != NULL) {
+        prog.max = *(long*) msg.arg;
+
+      // This time its a message it's done processing the dictionary file
+      } else {
+        // This 'freezes' the progress indicator, since its really just guestimation on the
+        // progress, the numbers are really off. So its zeroed. Looks better.
+        progress_finish(&prog);
+        // Issue a message to queue another word generator worker
+        tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+        printf("\n");
+      }
+      continue;
+    }
+
+    if (TQMESSAGE_TEST_WORDS == msg.flag) {
+      // worder_tester_worker has finished processing a batch of words, only thing
+      // we do is update the progress indicator
+      progress_update(&prog, msg.argn);
+      continue;
+    }
+
+    if (TQMESSAGE_WCOMBINATOR == msg.flag) {
+      continue;
+    }
+    
+    if (TQMESSAGE_PASSWORD == msg.flag) {
+      // Good stuff, keep the password for later, and issue a message to begin
+      // the process of closing down
+      password = (char*) msg.arg;
+      tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_PASSWORD | TQMESSAGE_CLOSE), NULL, 0, 1);
+      continue;
+    }
+
+    // Begin the process of closing down the threads properly and clean
+    // up after ourselfs. There are two different ways we end up here,
+    // found a password and we didnt; we have to handle them differently.
+    // *note: 90% of memory leaks stemmed from here, all them sneaky little
+    // hobbitses stealing ramsies
+    if (TQMESSAGE_CLOSE & msg.flag) {
+      if (TQMESSAGE_PASSWORD & msg.flag) {
+        // In the case we found a password, we use pthread_cancel to forcefully
+        // close the threads, since they are propably busy processing stuff, and
+        // there are stuff queued up, its unreliable to send close message to the
+        // threads. The dictionary worker might be reading a huge file, not good.
+        // So we issue pthread_cancel
+        for (int i = 0; i < client_config.thread_count; i++)
+          pthread_cancel(*(worker_threads + i));
+        // But that may leave messages queued up in the channels that wont be processes
+        // by the threads; which would be a disaster for memory leaks. The messages
+        // reference large swathes of data in heap. So we have to flush the queues
+        // before we exit the application.
+      } else {
+        // The other case, is we finished all the tasks that produce words, and we
+        // still havent found any matches. Here we cant really close the threads
+        // directly, since there might still be a valid password close to be found
+        // in another thread, or queued up.
+        // Here we just issue TQMESSAGE_CLOSE with the lowest priority, one for
+        // each thread (they will only pick one up each, since its the last one they
+        // can read), To avoid deadlock and flooding the threads queue by sending all
+        // messages at once; we send them one by one by letting the threads resend it
+        // by decrementing a counter
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_CLOSE, NULL, client_config.thread_count, 0);
+        // *note: turns out this wasnt that complicated after all, but I guess it's
+        // always that way, once you get a good enough solution.
+      }
+      continue;
+    }
+
+    if (TQMESSAGE_POP == msg.flag) {
+      // When the last child thread has exited, there isnt anyone that will be sending
+      // messages to the control queue, safe to quit
+      if (--threads_active == 0) break;
+      continue;
     }
   }
-  printf("\n\n");
 
-  // Waiting for worker threads to completely finish
-  for (int i = 0; i < tp.num_workers; i++) {
-    pthread_join(*(tp.workers + i), NULL);
+  // Join all child threads, free up the memory associated with the threads
+  for (int i = 0; i < client_config.thread_count; i++) {
+    pthread_join(*(worker_threads + i), NULL);
   }
 
-  // Reportskies
+  // Check if there are any messages queued still in the message queues, that
+  // has any memory allocations we need to free before exiting. This can happen
+  // when we find a password, while still having data queued up for processing
+  // Alter the message queues to O_NONBLOCK, so we can read from the channels
+  // until its empty, and return a EAGAIN code when its empty, istead of blocking
+  tqueue_unblock(&tq);
+  // *note: after some refactoring, got it down to only one message that could
+  // leak at this point, good stuff
+  while (tqueue_read(tq.queue_control, &msg) > 0);
+  while (tqueue_read(tq.queue_threads, &msg) > 0) {
+    if (TQMESSAGE_TEST_WORDS == msg.flag) {
+      struct test_words* words = (struct test_words*) msg.arg;
+      free(words->buffer);
+      free(words);
+    }
+  }
+
+  // Write to the console the result
   if (password != NULL) {
-    printf("> PASSWORD: %s\n", password);
+    printf("> PASSWORD : %s\n", password);
     free(password);
   } else {
-    printf("> PASSWORD not found =(\n");
+    printf("> PASSWORD : NO MATCH\n");
   }
 
   // Cleanup
+  free(worker_threads);
   args_client_free(&client_config);
-  tpool_queue_free(&queue);
-  tpool_free(&tp);
+  tqueue_free(&tq);
+
+  // Only way to get valgrind not to be upset about open file descriptors
+  // with the flag --track-fds=yes
+  fclose(stdin);
+  fclose(stdout);
+  fclose(stderr);
   return EXIT_SUCCESS;
 }
-/*
-
-
-     main thread       theads                            mainthread
-                       threads
-    provider
-
-    threads
-    threads
-    thread
-
-
-
-*/

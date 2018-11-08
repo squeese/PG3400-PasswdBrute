@@ -150,7 +150,7 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->input_length = sizeof(ARGS_DEFAULT_CLIENT_INPUT) / sizeof(char) - 1;
   config->word_length_min = ARGS_DEFAULT_CLIENT_WORD_LENGTH_MIN;
   config->word_length_max = ARGS_DEFAULT_CLIENT_WORD_LENGTH_MAX;
-  config->salt[13] = 0;
+  config->salt[12] = 0;
   config->hash[34] = 0;
   config->server_count = 0;
   config->server_addrs = NULL;

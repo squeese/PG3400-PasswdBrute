@@ -1,12 +1,12 @@
 #include "tpool.h"
 #include <stdlib.h>
 
-void tpool_init(struct tpool* tp, unsigned int count) {
+void tqueue_init(struct tpool* tp, unsigned int count) {
   tp->count = count;
   tp->threads = malloc(count * sizeof(pthread_t));
 }
 
-char* tpool_run(struct tpool* tp, tpool_fn fn, void* state) {
+char* tqueue_run(struct tpool* tp, tqueue_fn fn, void* state) {
   char* result = NULL;
   for (unsigned int i = 0; i < tp->count; i++) {
     pthread_create(&tp->threads[i], NULL, fn, state);
@@ -21,6 +21,6 @@ char* tpool_run(struct tpool* tp, tpool_fn fn, void* state) {
   return result;
 }
 
-void tpool_free(struct tpool* tp) {
+void tqueue_free(struct tpool* tp) {
   free(tp->threads);
 }

@@ -9,7 +9,7 @@ struct thread_cleanup_t {
 };
 
 extern struct args_client_config client_config;
-extern struct tpool_queue queue;
+extern struct tqueue_queue queue;
 
 void* thread_worker_local_encrypt(void*);
 void* thread_worker_remote_tunnel(void*);
