@@ -3,16 +3,27 @@
 #include "tqueue.h"
 
 enum {
-  TQMESSAGE_PUSH          = (1 << 0),
-  TQMESSAGE_POP           = (1 << 1),
-  TQMESSAGE_NEXT          = (1 << 2),
-  TQMESSAGE_WDICTIONARY   = (1 << 3),
-  TQMESSAGE_WCOMBINATOR   = (1 << 4),
-  TQMESSAGE_TEST_WORDS    = (1 << 5),
-  TQMESSAGE_PASSWORD      = (1 << 6),
-  TQMESSAGE_CLOSE         = (1 << 7),
-  TQMESSAGE_FLUSH         = (1 << 8),
-  TQMESSAGE_RETURN        = (1 << 9),
+  TQM_THREAD_STARTED          = (1 << 0),
+  TQM_THREAD_STOPPED           = (1 << 1),
+  TQM_THREAD_CLOSE         = (1 << 8),
+  TQM_THREAD_FLUSH         
+
+  TQM_WORD_DICTIONARY
+  TQM_WORD_COMBINATOR
+  TQM_WORD_ENCRYPT
+
+
+  TQM_PROCESS_WORD
+
+  TQM_TASK          = (1 << 2),
+  TQM_WORD_LOADFILE   = (1 << 3),
+  TQM_WORD_GENERATE   = (1 << 4),
+  TQM_WORD_ENCRYPT        = (1 << 5),
+
+  TQM_FOUND_PASSWORD      = (1 << 7),
+
+  TQM_FLUSH         = (1 << 9),
+  TQM_RETURN        = (1 << 10),
 };
 
 void tqueue_worker_root(mqd_t threads, mqd_t control, struct tqueue_message* msg);

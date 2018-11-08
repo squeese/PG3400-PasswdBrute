@@ -78,11 +78,19 @@ int main(int argc, char** args) {
         char* path = *(client_config.dictionary_paths + index_dictionary++);
         // Reset the progress indicator to show the dictionary
         progress_init(&prog);
-        progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
         // Issue a message to the threads to spawn a wdictionary_worker
-        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, path, 0, 1);
+        if ((pagefile_size = pagefile_load(path, &pagefile_buffer)) < 0) {
+          // There was an error opening file, and/or loading pagefile
+          progress_title(&prog, snprintf(prog.title, 64, "Error: %d", errno));
+          progress_finish(&prog);
+          // Try again..
+          tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+          continue;
+        }
+        progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
+        prog.max = pagefile_buffer 
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, pagefile, 0, 1);
 
-      // Next up is a word combiner to generate words
       // We must spawn a wcombiner_worker for each length of word user wants to try
       // Users can use either -l <num> to indicate length of word to search for
       // or -L <n-m> which indicates a range from N to M, eks: -L 1-3
@@ -123,9 +131,18 @@ int main(int argc, char** args) {
     }
 
     if (TQMESSAGE_TEST_WORDS == msg.flag) {
-      // worder_tester_worker has finished processing a batch of words, only thing
-      // we do is update the progress indicator
+      // There has been N (msg.argn) words been read from the pagefile_buffer and queued
+      // for testing
+      pagefile_pending +=
+    }
+
+    if (TQMESSAGE_TEST_DONE == msg.flag) {
       progress_update(&prog, msg.argn);
+      pagefile_pending -= msg.argn;
+      if (pagefile_locked && pagefile_pending == 0) {
+        munmap(pagefile_buffer, pagefile_size);
+        pagefile_buffer = NULL;
+      }
       continue;
     }
 
