@@ -11,7 +11,8 @@ enum {
   TQMESSAGE_TEST_WORDS    = (1 << 5),
   TQMESSAGE_PASSWORD      = (1 << 6),
   TQMESSAGE_CLOSE         = (1 << 7),
-  TQMESSAGE_RETURN        = (1 << 8),
+  TQMESSAGE_FLUSH         = (1 << 8),
+  TQMESSAGE_RETURN        = (1 << 9),
 };
 
 void tqueue_worker_root(mqd_t threads, mqd_t control, struct tqueue_message* msg);
@@ -22,5 +23,6 @@ void tqueue_worker_root_cleanup(void* arg);
 void tqueue_worker_word_tester_cleanup(void* arg);
 void tqueue_worker_wdictionary_cleanup(void* arg);
 void tqueue_worker_wcombinator_cleanup(void* arg);
+void tqueue_worker_flush(mqd_t threads, mqd_t control, struct tqueue_message* msg);
 
 #endif

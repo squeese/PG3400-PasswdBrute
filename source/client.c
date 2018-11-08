@@ -18,7 +18,7 @@ int main(int argc, char** args) {
   }
 
   // Dump the current configs passed to the console
-  printf("> HASH     : %s\n", client_config.hash);
+  printf("\n> HASH     : %s\n", client_config.hash);
   printf("> INPUTS   : length:%d, %s\n", client_config.input_length, client_config.input_buffer);
   printf("> LENGTH   : start:%d, end:%d\n", client_config.word_length_min, client_config.word_length_max);
   printf("> THREAD   : count:%d, size:%d\n", client_config.thread_count, client_config.thread_buffer_size);
@@ -57,22 +57,23 @@ int main(int argc, char** args) {
   while (tqueue_read(tq.queue_control, &msg)) {
 
     if (TQMESSAGE_PUSH == msg.flag) {
+      // Signal that indicates a thread has started
       if (threads_active++ == 0) {
-        // First thread worker has started, we can now issue a worker to start procude
-        // words to test agains the hash.
-        // The TQMESSAGE_RETURN sent to the treads queue, is indicating I want it sent back
-        // to this thread (main). This is because writing directly to the control queue,
-        // there is a good change to end up in deadlock, since the main thread is the only
-        // one reading from control
+        // Issue a signal to create a thread worker which will produce words to test against
+        // the hash.
         tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+        // The message is meant for this thread (main), but will be sent to the threads queue.
+        // Nifty little trick where we add a flag to indicate we want it sent back; this way
+        // we work around the problem of deadlock when writing to a channel you also have
+        // the responsebility to make sure messages are popped off.
       }
       continue;
     }
 
     if (TQMESSAGE_NEXT == msg.flag) {
-
-      // First in priority for searching for password is a dictionary file, we will create
-      // a wdictionary_worker for each dictionary specified in the -d path.txt file
+      // Signal that is issue when a word producing thread is needed.
+      // First in priority for searching for password is a dictionary file.
+      // Spawn one for each -d <pathname> flag used when running application
       if (index_dictionary < client_config.dictionary_count) {
         char* path = *(client_config.dictionary_paths + index_dictionary++);
         // Reset the progress indicator to show the dictionary
@@ -83,8 +84,8 @@ int main(int argc, char** args) {
 
       // Next up is a word combiner to generate words
       // We must spawn a wcombiner_worker for each length of word user wants to try
-      // So if specified to search for words up to 5 characters, we spawn 5 wcombinator_workers
-      // in sequence
+      // Users can use either -l <num> to indicate length of word to search for
+      // or -L <n-m> which indicates a range from N to M, eks: -L 1-3
       } else if (index_combiner <= client_config.word_length_max) {
         // Reset the progress indicator to show the dictionary
         progress_init(&prog);
@@ -92,7 +93,7 @@ int main(int argc, char** args) {
         // Issue a message to the threads to spawn a wcombiner_worker
         tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
 
-      // No more tasks that will generate words.
+      // No more workers to start that will produce words to test against
       // Issue a signal to begin closing down the threads and exit
       } else {
         tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_CLOSE), NULL, 0, 1);
@@ -101,7 +102,7 @@ int main(int argc, char** args) {
     }
 
     if ((TQMESSAGE_WDICTIONARY | TQMESSAGE_WCOMBINATOR) & msg.flag) {
-      // wdictionary_worker or wcombinator_worker has sent a message that it's started processing
+      // wdictionary_worker or wcombinator_worker has sent a message that it's started processing.
       // msg.arg contains the 'approximate' length of all words it will be producing
       if (msg.arg != NULL) {
         prog.max = *(long*) msg.arg;
@@ -110,7 +111,7 @@ int main(int argc, char** args) {
           progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
         }
 
-      // This time its a message it's done processing the dictionary file
+      // Or when they are finished producing words
       } else {
         // This 'freezes' the progress indicator, since its really just guestimation on the
         // progress, the numbers are really off. So its zeroed. Looks better.
@@ -137,37 +138,52 @@ int main(int argc, char** args) {
     }
 
     // Begin the process of closing down the threads properly and clean
-    // up after ourselfs. There are two different ways we end up here,
+    // up all allocations made in the thread.
+    // There are two different ways we end up here,
     // found a password and we didnt; we have to handle them differently.
-    // *note: 90% of memory leaks stemmed from here, all them sneaky little
-    // hobbitses stealing ramsies
     if (TQMESSAGE_CLOSE & msg.flag) {
       if (TQMESSAGE_PASSWORD & msg.flag) {
         // In the case we found a password, we use pthread_cancel to forcefully
-        // close the threads, since they are propably busy processing stuff, and
-        // there are stuff queued up, its unreliable to send close message to the
-        // threads. The dictionary worker might be reading a huge file, not good.
-        // So we issue pthread_cancel
-        for (int i = 0; i < client_config.thread_count; i++)
-          pthread_cancel(*(worker_threads + i));
-        // But that may leave messages queued up in the channels that wont be processes
-        // by the threads; which would be a disaster for memory leaks. The messages
-        // reference large swathes of data in heap. So we have to flush the queues
-        // before we exit the application.
+        // close the threads, since some threads are busy producing messages for
+        // other threads, they dont actually read messages from the queue. That
+        // being; wdictionary_worker and wcombiner_worker.
+        // So to initiate the shutdown directly with pthread_cancel on each thread.
+        // However, threads can be in state where they block cancellation, when
+        // they are waiting to write to the queue (when its full), in order to
+        // protect against memory leaks. That problem would only occure if the
+        // queue is full, we can solve that by making sure 'someone' is always
+        // reading messages of the queue.
+        // That is done by issuing a TQMESSAGE_FLUSH to the threads, one thread
+        // will go into cancellation block and read messages, and free up the
+        // allocated memory.
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_FLUSH, NULL, 0, 10);
+        // When control (main thread) recieves a TQMESSAGE_FLUSH signal, the
+        // cancellation can occur.
       } else {
-        // The other case, is we finished all the tasks that produce words, and we
-        // still havent found any matches. Here we cant really close the threads
-        // directly, since there might still be a valid password close to be found
-        // in another thread, or queued up.
-        // Here we just issue TQMESSAGE_CLOSE with the lowest priority, one for
-        // each thread (they will only pick one up each, since its the last one they
-        // can read), To avoid deadlock and flooding the threads queue by sending all
-        // messages at once; we send them one by one by letting the threads resend it
-        // by decrementing a counter
+        // The other case is when wdictionary_worker and wcombiner_worker are done
+        // producing words, and we still havent found any matches from the data
+        // so faar processed. But we cant outright cancel the threads though, since
+        // there might be data left in processing or queued. So we handle this by
+        // issuing a TQMESSAGE_CLOSE signal to the threads, with the lowest priority.
+        // We can guarantee that this message will be handled by all threads, since
+        // they must all be in a state listening for messages now.
+        // We only send one message though, sending one for each thread risk's deadlock.
+        // Send one, with a value indicating how many we want sent, the threads propagate
+        // the message among themselfs.
         tqueue_send(tq.queue_threads, &msg, TQMESSAGE_CLOSE, NULL, client_config.thread_count, 0);
-        // *note: turns out this wasnt that complicated after all, but I guess it's
-        // always that way, once you get a good enough solution.
       }
+      continue;
+    }
+
+    if (TQMESSAGE_FLUSH == msg.flag) {
+      // As explained above, one thread is now blocking cancellation, and reading from
+      // the threads channel, to ensure no deadlock, and all messages containing allocated
+      // memory is properly freed.
+      for (int i = 0; i < client_config.thread_count; i++)
+        pthread_cancel(*(worker_threads + i));
+      // Issue a new message to the blocking thread, that it can now cancel the block
+      // and terminate.
+      tqueue_send(tq.queue_threads, &msg, TQMESSAGE_FLUSH, NULL, 0, 0);
       continue;
     }
 
@@ -188,7 +204,7 @@ int main(int argc, char** args) {
   // has any memory allocations we need to free before exiting. This can happen
   // when we find a password, while still having data queued up for processing
   // Alter the message queues to O_NONBLOCK, so we can read from the channels
-  // until its empty, and return a EAGAIN code when its empty, istead of blocking
+  // until its empty, whitout blocking.
   tqueue_unblock(&tq);
   // *note: after some refactoring, got it down to only one message that could
   // leak at this point, good stuff
@@ -200,13 +216,12 @@ int main(int argc, char** args) {
     }
   }
 
-
   // Write to the console the result
   if (password != NULL) {
-    printf("\n\n> PASSWORD : %s\n\n", password);
+    printf("\n> PASSWORD : %s\n", password);
     free(password);
   } else {
-    printf("\n\n> PASSWORD : NO MATCH\n\n");
+    printf("\n> PASSWORD : NO MATCH\n");
   }
 
   // Cleanup

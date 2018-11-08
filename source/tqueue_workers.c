@@ -59,10 +59,39 @@ void tqueue_worker_root(mqd_t threads, mqd_t control, struct tqueue_message* msg
       continue;
     }
 
-    if (TQMESSAGE_CLOSE == msg->flag) {
-      if (--msg->argn > 0) {
-        tqueue_send(threads, msg, TQMESSAGE_CLOSE, NULL, msg->argn, 0);
+    if (TQMESSAGE_FLUSH == msg->flag) {
+      // The main thread has found a password, and is shutting down the threads,
+      // its doing this by calling pthread_cancel, but first it will send one of
+      // the threads into this state; blocking the pthread_cancel, read and dealloc
+      // messages in the queue until it receives another message to stop.
+      // This is done to prevent deadlock during the cancellation of threads, since
+      // wcombinator_worker and wdictionary_worker can be stuck trying to send
+      // a message with allocated memory (blocking cancellation aswell), so some
+      // thread must be reading those messages off the queue, and dealloc
+      pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+      // Send a message back to the control (main thread) that we are 'flushing'
+      // allocated messages
+      tqueue_send(control, msg, TQMESSAGE_FLUSH, NULL, 0, 10);
+      while (tqueue_read(threads, msg)) {
+        // When we get the next flush message, we cancel the loop, and unblock
+        // cancellation of the thread, thus this thread also exits
+        if (TQMESSAGE_FLUSH == msg->flag) break;
+        if (TQMESSAGE_TEST_WORDS == msg->flag)
+          tqueue_worker_word_tester_cleanup(msg->arg);
       }
+      pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+      pthread_testcancel();
+      break;
+    }
+
+    if (TQMESSAGE_CLOSE == msg->flag) {
+      // The message signals a shutdown of the threads, only one message is sent
+      // initially by the main thread, but we propagate the message back into the
+      // threads queue, until we sent one for each thread.
+      // It's done this way, instead of main thread (controller) sending all the
+      // messages because that would be an instant deadlock.
+      if (--msg->argn > 0)
+        tqueue_send(threads, msg, TQMESSAGE_CLOSE, NULL, msg->argn, 0);
       break;
     }
 
@@ -192,10 +221,13 @@ void tqueue_worker_wcombinator(mqd_t threads, mqd_t control, struct tqueue_messa
     char* buffer = malloc(buffer_size);
     int length;
     if ((length = wcomb_generate(&wcomb, buffer, word_count)) > 0) {
-      tqueue_send(threads, msg, TQMESSAGE_TEST_WORDS, buffer, length, 1);
-      pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-      pthread_testcancel();
-      continue;
+      if (tqueue_send(threads, msg, TQMESSAGE_TEST_WORDS, buffer, length, 1) >= 0) {
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        pthread_testcancel();
+        continue;
+      }
+      // resolve deadlock
+      printf("WTF\n");
     }
     free(buffer);
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
