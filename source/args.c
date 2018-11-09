@@ -4,93 +4,13 @@
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
-// #include <sys/socket.h>
-// #include <sys/types.h>
-// #include <sys/stat.h>
 #include <sys/un.h>
-// #include <fcntl.h>
 
-const unsigned int ARGS_DEFAULT_SERVER_PORT = 56130;
-static const unsigned int ARGS_DEFAULT_SERVER_THREADS = 8;
-static const unsigned int ARGS_DEFAULT_SERVER_STRIDE = 64;
 static const unsigned int ARGS_DEFAULT_CLIENT_WORD_LENGTH_MIN = 1;
 static const unsigned int ARGS_DEFAULT_CLIENT_WORD_LENGTH_MAX = 3;
 static const unsigned int ARGS_DEFAULT_CLIENT_THREAD_BUFFER_SIZE = 512;
 static const unsigned int ARGS_DEFAULT_CLIENT_THREAD_COUNT = 8;
 static const char ARGS_DEFAULT_CLIENT_INPUT[] = "abcdefghijklmnopqrstvwxyzABCDEFGHIJKLMNOPQRSTVWXYZ0123456789";
-
-static int args_server_info() {
-  fprintf(stderr, "Usage: server [...OPTIONS]\n");
-  fprintf(stderr, " OPTIONS:      Description            Default\n");
-  fprintf(stderr, "  -h hostname  server addres          0.0.0.0\n");
-  fprintf(stderr, "  -p port      server port            %d\n", ARGS_DEFAULT_SERVER_PORT);
-  fprintf(stderr, "  -t threads   number of threads      %d\n", ARGS_DEFAULT_SERVER_THREADS);
-  fprintf(stderr, "  -s stride    data size per thread   %d\n", ARGS_DEFAULT_SERVER_STRIDE);
-  return EXIT_FAILURE;
-}
-
-int args_server_init(struct args_server_config* config, int argc, char** args) {
-  config->host = NULL;
-  config->port = ARGS_DEFAULT_SERVER_PORT;
-  config->threads = ARGS_DEFAULT_SERVER_THREADS;
-  config->stride = ARGS_DEFAULT_SERVER_STRIDE;
-  opterr = 0;
-  int c;
-  while ((c = getopt(argc, args, "h:p:t:s:")) != -1) {
-    switch (c) {
-      case 'h': {
-        int len = strlen(optarg);
-        config->host = malloc((len + 1) * sizeof(char));
-        config->host[len] = 0;
-        memcpy(config->host, optarg, len);
-        break;
-      }
-      case 'p':
-        config->port = (unsigned int) atoi(optarg);
-        break;
-      case 't': {
-        unsigned int threads = (unsigned int) atoi(optarg);
-        if (threads < 1) {
-          fprintf(stderr, "Invalid value for port (%d), cant be less than 1\n", threads);
-          return EXIT_FAILURE;
-        }
-        config->threads = threads;
-        break;
-      }
-      case 's': {
-        unsigned int stride = (unsigned int) atoi(optarg);
-        if (stride < 1) {
-          fprintf(stderr, "Invalid value for stride (%d), cabt be less than 1\n", stride);
-          return EXIT_FAILURE;
-        }
-        config->stride = stride;
-        break;
-      }
-      case '?':
-        switch (optopt) {
-          case 'h':
-          case 'p':
-          case 't':
-          case 's':
-            fprintf(stderr, "Option -%c requires an argument\n", optopt);
-            break;
-          default:
-            fprintf(stderr, "Option -%c is an invalid argument\n", optopt);
-        }
-        return args_server_info();
-      default:
-        return args_server_info();
-    }
-  }
-  return EXIT_SUCCESS;
-}
-
-void args_server_free(struct args_server_config* config) {
-  if (config->host != NULL) {
-    free(config->host);
-    config->host = NULL;
-  }
-}
 
 static int args_client_info() {
   fprintf(stderr, "\n  OPTIONS:\n");
@@ -108,15 +28,6 @@ static int args_client_info() {
   fprintf(stderr, "    string of 34 characters\n");
   fprintf(stderr, "\n  Usage: client [...OPTIONS] HASH\n\n");
   return EXIT_FAILURE;
-}
-
-void args_client_push_server(struct args_client_config* config, struct sockaddr* server) {
-  if (config->server_addrs == NULL) {
-    config->server_addrs = malloc(sizeof(struct sockaddr*));
-  } else {
-    config->server_addrs = realloc(config->server_addrs, (config->server_count + 1) * sizeof(struct sockaddr*));
-  }
-  config->server_addrs[config->server_count++] = server;
 }
 
 static void args_client_push_input(struct args_client_config* config, char c) {
@@ -152,13 +63,11 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
   config->word_length_max = ARGS_DEFAULT_CLIENT_WORD_LENGTH_MAX;
   config->salt[12] = 0;
   config->hash[34] = 0;
-  config->server_count = 0;
-  config->server_addrs = NULL;
   config->thread_buffer_size = ARGS_DEFAULT_CLIENT_THREAD_BUFFER_SIZE;
   config->thread_count = ARGS_DEFAULT_CLIENT_THREAD_COUNT;
   opterr = 0;
   int c;
-  while ((c = getopt(argc, args, "d:l:L:s:i:I:t:b:C:")) != -1) {
+  while ((c = getopt(argc, args, "d:l:L:i:I:t:b:C:")) != -1) {
     switch (c) {
       case 'd': {
         int len = strlen(optarg);
@@ -273,40 +182,10 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
           args_client_info();
           fprintf(stderr, "  Invalid value for -%c, format is N-M, has to be positive values, and N must be less or equal to M\n\n", optopt);
           return EXIT_FAILURE;
-        }
+        };
         for (; min <= max; min++) {
           args_client_push_input(config, (char) min);
         }
-        break;
-      }
-      case 's': {
-        int len = strlen(optarg);
-        if (strncmp(optarg, "/tmp/", 5) == 0 && len > 6) {
-          // Create a config to connect to a local server
-          struct sockaddr_un* addr = calloc(1, sizeof(struct sockaddr_un));
-          memset(addr, 0, sizeof(*addr));
-          addr->sun_family = AF_UNIX;
-          strncpy(addr->sun_path, optarg, sizeof(addr->sun_path) - 1);
-          unlink(optarg);
-          args_client_push_server(config, (struct sockaddr*) addr);
-        } else {
-          // assume proper ip address =)
-          int colon = -1;
-          for (int i = 0; i < len; i++) {
-            if (optarg[i] != ':') continue;
-            *(optarg + i) = 0;
-            colon = i;
-            break;
-          }
-          struct sockaddr_in* addr = calloc(1, sizeof(struct sockaddr_in));
-          addr->sin_family = AF_INET;
-          addr->sin_port = (colon >= 0 && (colon + 1) < len) ? atoi(optarg + colon + 1) : (int)ARGS_DEFAULT_SERVER_PORT;
-          addr->sin_addr.s_addr = (colon < 1) ? INADDR_ANY : inet_addr(optarg);
-          args_client_push_server(config, (struct sockaddr*) addr);
-        }
-
-            // fprintf(stderr, "  Unable to open socket on `%s`. errno(%d): %s\n\n", optopt, errno, strerror(errno));
-          // int id = socket(AF_UNIX, SOCK_STREAM, 0);
         break;
       }
       case '?':
@@ -314,7 +193,6 @@ int args_client_init(struct args_client_config* config, int argc, char** args) {
           case 'd':
           case 'l':
           case 'L':
-          case 's':
           case 'i':
           case 'I':
           case 't':
@@ -357,10 +235,5 @@ void args_client_free(struct args_client_config* config) {
   if (config->input_buffer != NULL && config->input_buffer != ARGS_DEFAULT_CLIENT_INPUT) {
     free(config->input_buffer);
     config->input_buffer = NULL;
-  }
-  if (config->server_addrs != NULL) {
-    for (int i = 0; i < config->server_count; i++)
-      free(*(config->server_addrs + i));
-    free(config->server_addrs);
   }
 }

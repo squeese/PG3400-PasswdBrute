@@ -11,19 +11,22 @@ enum {
   TQMESSAGE_NEXT          = (1 << 2),
   TQMESSAGE_WDICTIONARY   = (1 << 3),
   TQMESSAGE_WCOMBINATOR   = (1 << 4),
-  TQMESSAGE_TEST_WORDS    = (1 << 5),
+  TQMESSAGE_TEST_FILE_WORDS    = (1 << 5),
   TQMESSAGE_PASSWORD      = (1 << 6),
   TQMESSAGE_CLOSE         = (1 << 7),
   TQMESSAGE_FLUSH         = (1 << 8),
   TQMESSAGE_RETURN        = (1 << 9),
+  TQMESSAGE_TEST_GENERATED_WORDS    = (1 << 10),
 };
 
 void tqueue_worker_root(mqd_t threads, mqd_t control, struct tqueue_message* msg);
-void tqueue_worker_word_tester(mqd_t threads, mqd_t control, struct tqueue_message* msg);
+void tqueue_worker_word_file_tester(mqd_t threads, mqd_t control, struct tqueue_message* msg);
+void tqueue_worker_word_generated_tester(mqd_t threads, mqd_t control, struct tqueue_message* msg);
 void tqueue_worker_wdictionary(mqd_t threads, mqd_t control, struct tqueue_message* msg);
 void tqueue_worker_wcombinator(mqd_t threads, mqd_t control, struct tqueue_message* msg);
 void tqueue_worker_root_cleanup(void* arg);
-void tqueue_worker_word_tester_cleanup(void* arg);
+void tqueue_worker_word_file_tester_cleanup(void* arg);
+void tqueue_worker_word_generated_tester_cleanup(void* arg);
 void tqueue_worker_wdictionary_cleanup(void* arg);
 void tqueue_worker_wcombinator_cleanup(void* arg);
 void tqueue_worker_flush(mqd_t threads, mqd_t control, struct tqueue_message* msg);

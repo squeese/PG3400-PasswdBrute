@@ -15,12 +15,12 @@ H3="\$1\$ivGZShhu\$L/NLEkmbLWOSUTOm3cnmO/"                                 # ???
 # ./client $ARGS $H3 -L 1-6 -I 0-9                                         # failure
 # ./client $ARGS $H3 -L 1-5 -I A-Z #                                       # failure
 # ./client $ARGS $H3 -L 1-3 -C 32-126                                      # failure
-# ./client $ARGS $H3 -L 1-8 -I 0-4                                         # failure
-# ./client $ARGS $H3 -L 1-8 -I 1-5                                         # failure
-# ./client $ARGS $H3 -L 1-8 -I 2-6                                         # failure
-# ./client $ARGS $H3 -L 1-8 -I 3-7                                         # failure
-# ./client $ARGS $H3 -L 1-8 -I 4-8                                         # failure
-# ./client $ARGS $H3 -L 1-8 -I 5-9                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 0-4                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 1-5                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 2-6                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 3-7                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 4-8                                         # failure
+ ./client $ARGS $H3 -L 1-8 -I 5-9                                         # failure
 # ./client $ARGS $H3 -d misc/rockyou.txt                                   # failure
 # ./client $ARGS $H3 -d misc/words.txt -l 1                                # failure
 
@@ -33,7 +33,7 @@ H5="\$1\$RvQQ2SJN\$Q80Nh4Ello9cx9Wllf5Nx/"                                 # 'ab
 XX="\$1\$RvQQ2SJN\$Q80Nh4Ell_9cx9Wllf5Nx/"                                 # 'about' dictionary
 #./client $ARGS $XX -d misc/small.txt -l 4
 #./client $ARGS $XX -d misc/small.txt -d misc/dictionary.txt
-./client $ARGS "\$1\$RvQQ2SJN\$Q80Nh4Ello9cx9Wllf5Nx/" -d misc/dictionary.txt    # about
+# ./client $ARGS "\$1\$RvQQ2SJN\$Q80Nh4Ello9cx9Wllf5Nx/" -d misc/dictionary.txt    # about
 
 H6="\$1\$CPqVGNrg\$YH26ye4.Cft6c9AWf0zUn1"                                 # 'something' dictionary
 # ./client $ARGS $H6 -d misc/dictionary.txt                                # success

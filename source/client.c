@@ -5,15 +5,6 @@
 #include "vmap.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <pthread.h>
-#include <mqueue.h>
-#include <time.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <math.h>
 
 struct args_client_config client_config;
 
@@ -56,7 +47,6 @@ int main(int argc, char** args) {
   int threads_active = 0;
   int index_dictionary = 0;
   int index_combiner = client_config.word_length_min;
-  int SHITPENDINGWTF = 0;
 
   // This is the 'controller'.
   // The threads spawned above send messages to the tqueue channel 'controller' with
@@ -88,7 +78,6 @@ int main(int argc, char** args) {
         vmap_load_file(&vmap, path);
         progress_init(&prog, vmap.size);
         progress_title(&prog, snprintf(prog.title, 64, "Dictionary: %s", path));
-        SHITPENDINGWTF = 0;
         tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WDICTIONARY, &vmap, 0, 1);
 
       } else if (index_combiner <= client_config.word_length_max) {
@@ -96,9 +85,9 @@ int main(int argc, char** args) {
         // We must spawn a wcombiner_worker for each length of word user wants to try
         // Users can use either -l <num> to indicate length of word to search for
         // or -L <n-m> which indicates a range from N to M, eks: -L 1-3
-        // progress_init(&prog);
-        // progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %d", index_combiner, client_config.input_length, 0));
-        // tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
+        progress_init(&prog, 1000000);
+        progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Solutions %d", index_combiner, client_config.input_length, 0));
+        tqueue_send(tq.queue_threads, &msg, TQMESSAGE_WCOMBINATOR, NULL, index_combiner++, 1);
 
       } else {
         // No more workers to start that will produce words to test against
@@ -109,39 +98,30 @@ int main(int argc, char** args) {
     }
 
     if ((TQMESSAGE_WDICTIONARY | TQMESSAGE_WCOMBINATOR) & msg.flag) {
-      /*
-        // wdictionary_worker or wcombinator_worker has sent a message that it's started processing.
-        // msg.arg contains the 'approximate' length of all words it will be producing
-        if (msg.arg != NULL) {
-          prog.max = *(long*) msg.arg;
-          if (TQMESSAGE_WCOMBINATOR == msg.flag) {
-            // update the 'combinations' in the title of progress bar
-            progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
-          }
-
-        // Or when they are finished producing words
-        } else {
-          // This 'freezes' the progress indicator, since its really just guestimation on the
-          // progress, the numbers are really off. So its zeroed. Looks better.
-          progress_finish(&prog);
-          // Issue a message to queue another word generator worker
-          tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
+      // wdictionary_worker or wcombinator_worker has sent a message that it's started processing.
+      // msg.arg contains the 'approximate' length of all words it will be producing
+      if (msg.arg != NULL) {
+        prog.max = *(long*) msg.arg;
+        if (TQMESSAGE_WCOMBINATOR == msg.flag) {
+          // update the 'combinations' in the title of progress bar
+          progress_title(&prog, snprintf(prog.title, 64, "Word Size %d, Search Area %d, Combinations %ld", index_combiner - 1, client_config.input_length, *(long*) msg.arg)); 
         }
-      */
-      SHITPENDINGWTF += msg.argn;
-      if (SHITPENDINGWTF == 0) {
-        printf("task complete 1\n");
+
+      // Or when they are finished producing words
+      } else {
+        // This 'freezes' the progress indicator, since its really just guestimation on the
+        // progress, the numbers are really off. So its zeroed. Looks better.
+        progress_finish(&prog);
+        printf("\n");
+        // Issue a message to queue another word generator worker
+        tqueue_send(tq.queue_threads, &msg, (TQMESSAGE_RETURN | TQMESSAGE_NEXT), NULL, 0, 1);
       }
       continue;
     }
 
-    if (TQMESSAGE_TEST_WORDS == msg.flag) {
+    if ((TQMESSAGE_TEST_GENERATED_WORDS | TQMESSAGE_TEST_FILE_WORDS) & msg.flag) {
       // worder_tester_worker has finished processing a batch of words, only thing
       // we do is update the progress indicator
-      SHITPENDINGWTF--;
-      if (SHITPENDINGWTF == 0) {
-        printf("task complete 2\n");
-      }
       progress_update(&prog, msg.argn);
       continue;
     }
@@ -223,13 +203,15 @@ int main(int argc, char** args) {
   // Alter the message queues to O_NONBLOCK, so we can read from the channels
   // until its empty, whitout blocking.
   tqueue_unblock(&tq);
-  // *note: after some refactoring, got it down to only one message that could
-  // leak at this point, good stuff
   while (tqueue_read(tq.queue_control, &msg) > 0);
   while (tqueue_read(tq.queue_threads, &msg) > 0) {
-    if (TQMESSAGE_TEST_WORDS == msg.flag) {
-      // buffer from wcombiner_worker and wdictionary_worker
+    if (TQMESSAGE_TEST_FILE_WORDS == msg.flag) {
+      free((char**) msg.arg);
+      continue;
+    }
+    if (TQMESSAGE_TEST_GENERATED_WORDS) {
       free((char*) msg.arg);
+      continue;
     }
   }
 

@@ -1,16 +1,16 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O3 -g -Wno-comment
-SHARED = args tqueue wcombinator tqueue tqueue_workers progress vmap
+DFLAGS = -Wall -Wextra -O3 -g -Wno-comment
+BFLAGS = -O3
+SHARED = args wcombinator tqueue tqueue_workers progress vmap
 
 all: client
 client: directories binary_client
-test: directories binary_test
+
+build: $(patsubst %,build/%.o,$(SHARED)) build/client.o
+	$(CC) $(BFLAGS) -o client $^ -lcrypt -pthread -lrt -lm
 
 binary_client: $(patsubst %,build/%.o,$(SHARED)) build/client.o
 	$(CC) $(CFLAGS) -o client $^ -lcrypt -pthread -lrt -lm
-
-binary_test:  $(patsubst %,build/%.o,$(SHARED)) build/test.o
-	$(CC) $(CFLAGS) -o test $^ -lcrypt -pthread -lrt -lm
 
 build/%.o: source/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -18,11 +18,8 @@ build/%.o: source/%.c
 directories:
 	mkdir -p build
 
-clean:
-	rm -rf client server test build/*.o
-
 development: client
 	./development.sh
 
-test: binary_test
-	./test
+clean:
+	rm -rf client server test build/*.o

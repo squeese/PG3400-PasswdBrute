@@ -1,15 +1,8 @@
 #include "vmap.h"
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <pthread.h>
+#include <stdio.h>
 #include <mqueue.h>
-#include <time.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <math.h>
-#include <stdio.h>
 
 int vmap_load_file(struct vmap* vm, char* path) {
   int file = open(path, O_RDONLY, S_IRUSR | S_IWUSR);
